@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export default function BLOCK_QuickActions() {
 
     {/* ALLOWS YOU DO TO HANDLE FILE DROP-INS*/ }
-    {/* TODO: CREATE A HOOK */}
+    {/* TODO: CREATE A HOOK */ }
     const [isDragging, setIsDragging] = useState(false);
     const router = useRouter();
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -28,7 +28,7 @@ export default function BLOCK_QuickActions() {
 
 
     {/* CUSTOM FUNCTIONS USED TO CONVERT & STORE FILE CONTENT DATA */ }
-    {/* TODO: CREATE A HOOK */}
+    {/* TODO: CREATE A HOOK */ }
     // Helper function to convert File to Base64
     const convertFileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -76,9 +76,9 @@ export default function BLOCK_QuickActions() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
                 </div>
-                <div>Drag drop files here</div>
-                <div> | </div>
-                <div>
+                <div className="flex gap-2">
+                    <button className="hover:underline cursor-pointer">Drag or select files</button>
+                    <div> | </div>
                     <button className="hover:underline cursor-pointer">
                         PDF Editor
                     </button>

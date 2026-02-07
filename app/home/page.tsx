@@ -1,82 +1,132 @@
+/**
+ * ? ISSUES:
+ * * 1. NextJS reports that "DOMMatrix is not defined." This is only early in testing,
+ * * all we have to do is move that component over to an independent component. 
+ */
+
 'use client';
 
-import BLOCK_NavigationCard from '@/visuals/core_ui/nav/BLOCK_NavigationCard';
-import BLOCK_QuickActions from '@/visuals/core_ui/clickables/quick_actions/BLOCK_QuickActions';
-import { INTERACTION_SessionCard } from '@/visuals/core_ui/clickables/recent_sessions/INTERACTION_SessionCard';
-import BLOCK_RecentSessions from '@/visuals/core_ui/clickables/recent_sessions/BLOCK_RecentSessions';
+import { useRef, useState, useMemo } from "react";
+import { Document, Page as PDFPage, pdfjs } from "react-pdf";
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+{/* REQUIREMENT: GLOBAL WORKER */ }
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function Page() {
-    // Mock data
-    const userData = [
-        {
-            userProfileImage: "https://images.pexels.com/photos/28742872/pexels-photo-28742872.jpeg",
-            userProfileAlt: "Image of user profile"
-        }
-    ]
+    {/* SELECT FILE --> READ FILE */ }
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [getSelectedFile, setSelectedFile] = useState<File | null>(null);
+    const [getFileContent, setFileContent] = useState<string>("");
 
-    const recentSessions = [
-        {
-            userName: "Marcus Rodriguez",
-            userID: "user1",
-            thumbnailUrl: "https://images.pexels.com/photos/34822470/pexels-photo-34822470.jpeg?_gl=1*oa0egi*_ga*ODEyMzcxMDcwLjE3Njg5NjEyNDU.*_ga_8JE65Q40S6*czE3Njg5NjEyNDQkbzEkZzEkdDE3Njg5NjEyNDckajU3JGwwJGgw",
-            thumbnailAlt: "Invoice preview for Marcus Rodriguez",
-            date: "Jan 21, 2026",
-            fileSize: "1.8MB",
-            pageCount: 23,
-        },
-        {
-            userName: "Aisha Patel",
-            userID: "user2",
-            thumbnailUrl: "https://images.pexels.com/photos/31544399/pexels-photo-31544399.jpeg?_gl=1*3vm33h*_ga*ODEyMzcxMDcwLjE3Njg5NjEyNDU.*_ga_8JE65Q40S6*czE3Njg5ODk3MzkkbzIkZzEkdDE3Njg5ODk3NDAkajU5JGwwJGgw",
-            thumbnailAlt: "Invoice preview for Aisha Patel",
-            date: "Jan 20, 2026",
-            fileSize: "4.5MB",
-            pageCount: 62,
-        },
-        {
-            userName: "Chen Wei",
-            userID: "user3",
-            thumbnailUrl: "https://images.pexels.com/photos/33486705/pexels-photo-33486705.jpeg",
-            thumbnailAlt: "Invoice preview for Chen Wei",
-            date: "Jan 19, 2026",
-            fileSize: "2.1MB",
-            pageCount: 35,
-        },
-        {
-            userName: "Sofia Kowalski",
-            userID: "user4",
-            thumbnailUrl: "https://images.pexels.com/photos/34822460/pexels-photo-34822460.jpeg",
-            thumbnailAlt: "Invoice preview for Sofia Kowalski",
-            date: "Jan 18, 2026",
-            fileSize: "5.7MB",
-            pageCount: 89,
-        },
-        {
-            userName: "Jamal Thompson",
-            userID: "user5",
-            thumbnailUrl: "https://images.pexels.com/photos/32909799/pexels-photo-32909799.jpeg",
-            thumbnailAlt: "Invoice preview for Jamal Thompson",
-            date: "Jan 17, 2026",
-            fileSize: "3.9MB",
-            pageCount: 51,
-        },
-    ];
+    /**
+     * ! IMPORTANT
+     * * Primary function that handes the file click, event. 
+     */
+    const A01 = () => {
+        fileInputRef.current?.click();
+    }
+
+    /**
+     * ! IMPORTANT
+     * * Helps build the "onChange" so it doesn't become messy
+     */
+    const A02 = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        setSelectedFile(file)
+        const reader = new FileReader();
+        if (file) {
+            reader.onload = (e) => setFileContent(e.target?.result as string);
+            reader.readAsDataURL(file)
+        }
+        setSelectedFile(file);
+    }
+
+
+    /**
+     * ! -----------------------------------------------------
+     */
+
+
+    {/* READ FILE --> DISPLAY FILE */ }
+    const [getPageNumber, setPageNumber] = useState<number>(0);
+
+    {/* ZOOM FUNCTIONALITY */ }
+    const [getZoom, setZoom] = useState<number>(1.0);
+
+    {/* FLICKER WHEN ZOOMING FIX */ }
+    const pageDisplayed = useMemo(() => {
+        return Array.from(new Array(getPageNumber), (_, index) => (
+            <PDFPage key={index} pageNumber={index + 1} scale={getZoom} loading="eager" />
+        ))
+    }, [getZoom])
 
     return (
-        <main className="min-h-screen bg-red-200">
-            {/* NAV */}
-            <BLOCK_NavigationCard 
-                userData={userData}
-            />
-
-            {/* QUICK ACTIONS */}
-            <BLOCK_QuickActions />
-
-            {/* RECENT SESSIONS */}
-            <section data-section="RECENT_SESSIONS" className="bg-[#F1F1F1] min-h-screen">
-                <BLOCK_RecentSessions
-                    sessions={recentSessions}
-                />
+        <main data-section="PARENT" className="relative h-screen bg-neutral-200 overflow-hidden">
+            {/* Choose file */}
+            <nav className="relative sticky top-0 z-1000 w-full">
+                <div className="flex justify-between p-4 px-4 bg-neutral-700">
+                    <div className="">
+                        <span>logo</span>
+                    </div>
+                    <div>
+                        <button onClick={A01} className="cursor-pointer hover:underline">drop/select a file here</button>
+                        <input ref={fileInputRef} type="file" className="hidden" onChange={A02} />
+                    </div>
+                    <div>
+                        <span>profile</span>
+                    </div>
+                </div>
+                <div className="flex justify-center gap-2 p-2 bg-neutral-800">
+                    <button
+                        onClick={() => setZoom(getZoom + 0.1)}
+                        className="hover:underline p-1 px-2 bg-neutral-200 rounded-md text-black">
+                        zoom +
+                    </button>
+                    <div className="p-1 px-2 bg-neutral-200 rounded-md text-black">
+                        {`${Math.round(getZoom * 100)}%`}
+                    </div>
+                    <button
+                        onClick={() => setZoom(getZoom - 0.1)}
+                        className="hover:underline p-1 px-2 bg-neutral-200 rounded-md text-black">
+                        zoom -
+                    </button>
+                </div>
+            </nav>
+            <section className="h-screen overflow-y-auto">
+                {
+                    /** 
+                     * TODO: (1) --> redesign VISUALS
+                     * TODO: (2) --> introduce SCROLL ✓
+                     * TODO: (3) --> introduce PAGE NUMBERING
+                     * TODO: (4) --> introduce ROTATION
+                     */
+                }
+                {getSelectedFile ? (
+                    <>
+                        <section
+                            className="overflow-hidden text-black flex flex-col items-center justify-center"
+                        >
+                            <Document
+                                file={getFileContent}
+                                className={"flex flex-col gap-2"}
+                                onLoadSuccess={({ numPages }) => setPageNumber(numPages)}>
+                                {
+                                    Array.from(new Array(getPageNumber), (_, index) => (
+                                        <PDFPage key={index} pageNumber={index + 1} scale={getZoom} />
+                                    ))
+                                }
+                            </Document>
+                        </section>
+                    </>
+                ) : (
+                    <>
+                        <section className="text-black flex justify-center items-center h-screen">
+                            <p>nothing selected, yet</p>
+                        </section>
+                    </>
+                )}
             </section>
         </main>
     );
