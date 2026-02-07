@@ -30,3 +30,7 @@ body {
     display: none;
   }
 }
+
+html {
+  overscroll-behavior: none;
+}
