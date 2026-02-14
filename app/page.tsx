@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { pdfjs } from "react-pdf";
 import { PDFDocument } from 'pdf-lib';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -16,6 +16,7 @@ export default function Page() {
      * ! DRAGGING CODE
      */
     const [isDragging, setIsDragging] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -34,6 +35,12 @@ export default function Page() {
             handleFiles(files);
         }
     }
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            handleFiles(files);
+        }
+    };
     const convertFileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -75,6 +82,7 @@ export default function Page() {
     /**
      * ! CHATGPT API CALL
      */
+    const [getGptData, setGptData] = useState<any>(null);
     const processInvoice = async (base64: string, name: string) => {
         // Extract data from PDF
         const fileName = name;
@@ -118,19 +126,39 @@ export default function Page() {
         const data = await res.json();
         const content = data.choices[0].message.content;
         const cleanJson = content.replace(/```json\n?|```\n?/g, '').trim();
+        const parsedData = JSON.parse(cleanJson);
+        setGptData(parsedData);
         return JSON.parse(cleanJson);
     };
-    const downloadImage = async () => {
-        const templateUrl = '../template/TEMPLATE_v2.pdf';
-        const response = await fetch(templateUrl);
-        const blob = await response.blob();
+    const [getSelectedFile, setSelectedFile] = useState<File | null>(null);
+    const ciaInputRef = useRef<HTMLInputElement>(null);
+    const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
+    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setCiaTemplate(file);
+            setSelectedFile(file); // For fillPdfField to use
+        }
+    };
+    const fillPdfField = async () => {
+        if (!getCiaTemplate) return;
 
+        const arrayBuffer = await getCiaTemplate.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        const form = pdfDoc.getForm();
+
+        form.getTextField('FIELD_vendorNumber').setText('anothea');
+        form.getTextField('FIELD_vendorName').setText('NAME');
+
+        form.flatten();
+
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'TEMPLATE_v2.pdf';
+        link.download = `filled_${getCiaTemplate.name}`;
         link.click();
-
         URL.revokeObjectURL(url);
     }
 
@@ -202,10 +230,7 @@ export default function Page() {
                         <div className="relative flex h-full w-full items-center justify-center">
                             <div className="flex gap-2 justify-center items-center text-green-700">
                                 <span>{(getUploadedFiles[0]?.size / 1024).toFixed(1)} KB</span>
-                                <span>{getUploadedFiles[0]?.name}</span>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="size-6">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                </svg>
+                                <span>{getUploadedFiles[0]?.name} ✅</span>
                             </div>
                             <div className="absolute bottom-0 w-full flex gap-3 items-center justify-center p-4">
                                 <button
@@ -219,24 +244,38 @@ export default function Page() {
                 ) : (
                     <>
                         <div className="flex gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            <span>drag & drop area</span>
+                            <span
+                                onClick={() => fileInputRef.current?.click()}
+                                className="hover:underline cursor-pointer">
+                                select pdf ❌
+                            </span>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".pdf"
+                                onChange={handleFileSelect}
+                                className="hidden"
+                            />
                         </div>
                     </>
                 )}
             </section>
             <section data-section="fun buttons" className="p-8">
                 <section className="flex gap-8">
-                    <button
-                        onClick={async () => {
-                            const output = await processInvoice(getUploadedFiles[0]?.data || '', getUploadedFiles[0]?.name);
-                            console.log(output);
-                        }}
-                        className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
-                        auto generate cover sheet
-                    </button>
+                    <div onClick={() => fillPdfField()} className="border-2 w-80 h-80 rounded-xl text-lg hover:bg-black/5 hover:shadow-md cursor-pointer flex flex-col justify-center items-center">
+                        <button
+                            onClick={() => ciaInputRef.current?.click()}
+                            className="flex hover:underline cursor-pointer">
+                            {getCiaTemplate ? `${getCiaTemplate.name} ✅` : 'set cia ❌'}
+                        </button>
+                        <input
+                            ref={ciaInputRef}
+                            type="file"
+                            accept=".pdf"
+                            onChange={handleCiaFileSelect}
+                            className="hidden"
+                        />
+                    </div>
                     <button
                         onClick={async () => {
                             const pdfData = getUploadedFiles[0]?.data || '';
@@ -244,13 +283,6 @@ export default function Page() {
                         }}
                         className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
                         pdf to jpeg (single)
-                    </button>
-                    <button
-                        onClick={async () => {
-                            downloadImage();
-                        }}
-                        className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
-                        download image (test)
                     </button>
                     <button className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">add blank & support sheet</button>
                 </section>
