@@ -118,9 +118,23 @@ export default function Page() {
         const data = await res.json();
         const content = data.choices[0].message.content;
         const cleanJson = content.replace(/```json\n?|```\n?/g, '').trim();
-        fillCoverSheet(cleanJson, fileName);
         return JSON.parse(cleanJson);
     };
+    const downloadImage = async () => {
+        const templateUrl = '../template/TEMPLATE_v2.pdf';
+        const response = await fetch(templateUrl);
+        const blob = await response.blob();
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'TEMPLATE_v2.pdf';
+        link.click();
+
+        URL.revokeObjectURL(url);
+    }
+
+
     /**
      * ! CHATGPT API CALL
      */
@@ -172,38 +186,6 @@ export default function Page() {
     /**
      * ! MISC FUNCTIONALITY
      */
-
-
-    /**
-     * ------------------------------------------------------------------
-     */
-
-
-    /**
-     * ! MISC FUNCTIONALITY
-     */
-    const fillCoverSheet = async (cleanJson: any, filename: string) => {
-        const templateUrl = '../template/TEMPLATE_v2.pdf';
-        const templateBytes = await fetch(templateUrl).then(res => res.arrayBuffer());
-
-        const pdf = await PDFDocument.load(templateBytes);
-        const form = pdf.getForm();
-
-        form.getTextField('FIELD_invoiceNumber').setText(cleanJson.FIELD_invoiceNumber);
-        form.getTextField('FIELD_poValue').setText(cleanJson.FIELD_poValue);
-        form.getTextField('FIELD_subtotal').setText(cleanJson.FIELD_subtotal);
-
-        form.flatten();
-
-        const pdfBytes = await pdf.save();
-        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename; // Use the filename parameter
-        link.click();
-        URL.revokeObjectURL(url);
-    };
 
 
     return (
@@ -262,6 +244,13 @@ export default function Page() {
                         }}
                         className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
                         pdf to jpeg (single)
+                    </button>
+                    <button
+                        onClick={async () => {
+                            downloadImage();
+                        }}
+                        className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
+                        download image (test)
                     </button>
                     <button className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">add blank & support sheet</button>
                 </section>
