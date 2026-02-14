@@ -35,8 +35,8 @@ export default function Page() {
         const pdfDoc = await PDFDocument.load(arrayBuffer);
         const form = pdfDoc.getForm();
 
-        const vendorField = form.getTextField('FIELD_vendorNumber');
-        vendorField.setText('TEST');
+        form.getTextField('FIELD_vendorNumber').setText('TEST');
+        form.getTextField('FIELD_vendorName').setText('NAME');
 
         form.flatten();
 
@@ -64,7 +64,15 @@ export default function Page() {
                 <section className="flex gap-8">
                     <div onClick={() => fillPdfField()} className="border-2 w-80 h-80 rounded-xl flex flex-col justify-center items-left px-8 text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
                         <div>{getSelectedFile?.name || ''}</div>
-                        <div>{((getSelectedFile?.size || 0) / 1024).toFixed(1)} KB</div>
+                        {getSelectedFile ? (
+                            <>
+                                <div>{((getSelectedFile?.size || 0) / 1024).toFixed(1)} KB</div>
+                            </>
+                        ) : (
+                            <>
+                                <div></div>
+                            </>
+                        )}
                     </div>
                 </section>
             </section>
