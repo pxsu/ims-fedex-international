@@ -16,7 +16,7 @@ export default function Page() {
         <main data-section="whole page" className="bg-white text-black h-screen">
             <section data-section="fun buttons" className="p-8">
                 <section className="flex gap-8">
-                    <button onClick={() => convertPdfToImage()} className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">hi</button>
+                    <button onClick={() => null} className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">hi</button>
                     <div className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
                         <Image
                             src={TEST}
