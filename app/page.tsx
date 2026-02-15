@@ -6,13 +6,48 @@ import { PDFDocument } from 'pdf-lib';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import * as XLSX from 'xlsx';
-import { setDoc, doc } from 'firebase/firestore';
+import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from "@/firebase"
+import { Transition } from '@headlessui/react';
+import { error } from "console";
 
 {/* REQUIREMENT: GLOBAL WORKER */ }
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function Page() {
+    // * global notification system
+    const [getNotifications, setNotifications] = useState<Notification[]>([]);
+    type NotificationType = 'success' | 'error' | 'warning' | 'info';
+    interface Notification {
+        id: string;
+        title: string;
+        message?: string;
+        type: NotificationType;
+    }
+    const getNotificationStyles = (type: NotificationType) => {
+        switch (type) {
+            case 'success':
+                return 'bg-green-400 border-2 border-green-300';
+            case 'error':
+                return 'bg-red-400 border-2 border-red-300';
+            case 'warning':
+                return 'bg-yellow-400 border-2 border-yellow-300';
+            case 'info':
+                return 'bg-neutral-400 border-2 border-neutral-300';
+            default:
+                return 'bg-black border-2 border-gray-800';
+        }
+    };
+    const showNotification = (title: string, message?: string, type: NotificationType = 'success') => {
+        const id = Date.now().toString();
+        setNotifications(prev => [...prev, { id, title, message, type }]);
+
+        setTimeout(() => {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        }, 3000);
+    };
+
+
     // * TOP BAR FUNCTIONALITY
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -65,7 +100,18 @@ export default function Page() {
     const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
     const [getExcelTemplate, setExcelTemplate] = useState<any[]>([]);
     const [getExcelModal, setExcelModal] = useState(false);
+    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'exists'>('idle');
     const [getExtractedExcelData, setExtractedExcelData] = useState<ExtractedData | null>(null);
+    useEffect(() => {
+        if (getExcelModal) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [getExcelModal]);
     const handleExcelDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDraggingExcel(true);
@@ -77,36 +123,33 @@ export default function Page() {
     const handleExcelDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDraggingExcel(false);
-        const files = e.dataTransfer.files;
+
+        const files = Array.from(e.dataTransfer.files).filter(f =>
+            f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+        );
+
         if (files && files.length > 0) {
             handleExcelFiles(files);
             setExcelModal(true);
         }
     };
-    useEffect(() => {
-        if (getExcelModal) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
+    const handleExcelFiles = async (files: File[]) => {
+        const allFileData = [];
+        for (const file of files) {
+            const arrayBuffer = await file.arrayBuffer();
+            const base64 = await convertFileToBase64(file);
+            const fileData = {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                data: base64
+            };
+            allFileData.push(fileData);
+            await processExcelData(arrayBuffer);
         }
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [getExcelModal]);
-    const handleExcelFiles = async (files: FileList) => {
-        const file = files[0];
-        const arrayBuffer = await file.arrayBuffer();
-        const base64 = await convertFileToBase64(file);
-        const fileData = {
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            lastModified: file.lastModified,
-            data: base64
-        };
-        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify([fileData]));
-        setExcelTemplate([fileData]);
-        processExcelData(arrayBuffer);
+        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(allFileData));
+        setExcelTemplate(allFileData);
     }
     interface ExcelRow {
         __EMPTY?: string;
@@ -165,8 +208,27 @@ export default function Page() {
             currency,
         });
     };
-    const submitToFirebase = async (data: ExtractedData) => {
-        await setDoc(doc(db, 'vendor_data', `CIA-${data.vendorEmpNumber}`), data);
+    const submitToFirebase = async (data: ExtractedData): Promise<boolean> => {
+        try {
+            setUploadStatus('uploading');
+            const docRef = doc(db, 'vendor_data', `CIA-${data.vendorEmpNumber}`);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                setUploadStatus('exists');
+                setTimeout(() => setExcelModal(false), 1500);
+                return false;
+            }
+
+            await setDoc(docRef, data);
+            setUploadStatus('success');
+            setTimeout(() => setExcelModal(false), 1500);
+            return true;
+        } catch (error) {
+            setUploadStatus('error');
+            setTimeout(() => setExcelModal(false), 1500);
+            return false;
+        }
     };
 
 
@@ -303,7 +365,7 @@ export default function Page() {
                     ims
                 </button>
                 <div className="flex gap-2 items-center">
-                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
+                    <button onClick={() => { showNotification("Yo", "diddy called", "error") }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
                         btn 1
                     </button>
                     <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
@@ -468,7 +530,7 @@ export default function Page() {
                         onDragLeave={handleExcelDragLeave}
                         onDrop={handleExcelDrop}
                         className={`relative border-2 w-full aspect-square rounded-xl transition-all flex flex-col justify-center items-center gap-4 p-6 border-gray-300 cursor-pointer hover:border-purple-500 hover:bg-purple-50
-                ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
+                        ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
                         {getExcelTemplate.length > 0 && getExcelModal ? (
                             <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-purple-500"></div>
                         ) : (
@@ -480,6 +542,45 @@ export default function Page() {
                     </div>
                 </section>
             </section>
+
+
+            {
+                <div className="pointer-events-none fixed -inset-3 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[9999]">
+                    <div className="flex w-full flex-col items-center space-y-2">
+                        {getNotifications.map(notification => (
+                            <Transition
+                                key={notification.id}
+                                show={true}
+                                enter="transform transition duration-300 ease-out"
+                                enterFrom="translate-y-2 opacity-0"
+                                enterTo="translate-y-0 opacity-100"
+                                leave="transform transition duration-100 ease-in"
+                                leaveFrom="translate-y-0 opacity-100"
+                                leaveTo="translate-y-2 opacity-0">
+                                <div className={`pointer-events-auto w-full max-w-sm rounded-xl text-white p-4 ${getNotificationStyles(notification.type)}`}>
+                                    <div className="flex items-start">
+                                        <div className="ml-3 flex-1">
+                                            <p className="text-sm font-medium font-semibold">{notification.title}</p>
+                                            {notification.message && (
+                                                <p className="mt-1 text-sm -translate-y-1">{notification.message}</p>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                                            className="ml-4 text-white cursor-pointer">
+                                            <div className="flex items-center gap-2 hover:text-red-200 rounded-md hover:outline-2 hover:outline-red-200">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            </Transition>
+                        ))}
+                    </div>
+                </div>
+            }
 
 
             {getExcelModal && (
@@ -571,8 +672,18 @@ export default function Page() {
                             <div>
                                 <button
                                     onClick={() => { submitToFirebase(getExtractedExcelData!) }}
-                                    className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
-                                    {'press me :)'}
+                                    disabled={uploadStatus !== 'idle'}
+                                    className={`p-1 px-4 rounded-md transition-all ${uploadStatus === 'success' ? 'bg-green-500 text-white' :
+                                        uploadStatus === 'error' ? 'bg-red-500 text-white' :
+                                            uploadStatus === 'exists' ? 'bg-yellow-500 text-white' :
+                                                uploadStatus === 'uploading' ? 'bg-gray-400 text-white cursor-wait' :
+                                                    'bg-black text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 cursor-pointer'
+                                        }`}>
+                                    {uploadStatus === 'success' ? 'Success' :
+                                        uploadStatus === 'error' ? 'Error' :
+                                            uploadStatus === 'exists' ? 'File Exists' :
+                                                uploadStatus === 'uploading' ? 'Uploading...' :
+                                                    'Upload'}
                                 </button>
                             </div>
                         </div>
