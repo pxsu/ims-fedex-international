@@ -11,17 +11,10 @@ import 'react-pdf/dist/Page/TextLayer.css';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function Page() {
-
-
-    /**
-     * ! SITE FUNCTIONALITY
-     */
     const router = useRouter();
 
 
-    /**
-     * ! DRAGGING CODE
-     */
+    {/* DRAGGING CODE */}
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
@@ -36,7 +29,6 @@ export default function Page() {
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDragging(false);
-
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
             handleFiles(files);
@@ -61,7 +53,6 @@ export default function Page() {
             Array.from(files).map(async (file) => {
                 // Convert file to Base64 string so we can store it
                 const base64 = await convertFileToBase64(file);
-
                 return {
                     name: file.name,
                     size: file.size,
@@ -71,24 +62,13 @@ export default function Page() {
                 };
             })
         );
-
         // Store in sessionStorage
         sessionStorage.setItem('uploadedFiles', JSON.stringify(fileDataArray));
         setUploadedFiles(fileDataArray);
     }
-    /**
-     * ! DRAGGING CODE
-     */
 
 
-    /**
-     * ------------------------------------------------------------------
-     */
-
-
-    /**
-     * ! CHATGPT API CALL
-     */
+    {/* CHATGPT API CALL */}
     const [getGptData, setGptData] = useState<any>(null);
     const processInvoice = async (base64: string) => {
         // Extract data from PDF
@@ -101,7 +81,6 @@ export default function Page() {
             const content = await page.getTextContent();
             pages.push(content.items.map((item: any) => item.str).join(' '));
         }
-
         // Send to GPT
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -126,7 +105,6 @@ export default function Page() {
                 }]
             })
         });
-
         const data = await res.json();
         const content = data.choices[0].message.content;
         const cleanJson = content.replace(/```json\n?|```\n?/g, '').trim();
@@ -136,10 +114,10 @@ export default function Page() {
         return JSON.parse(cleanJson);
     };
 
+
     const [getSelectedFile, setSelectedFile] = useState<File | null>(null);
     const ciaInputRef = useRef<HTMLInputElement>(null);
     const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
-
     const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -147,6 +125,7 @@ export default function Page() {
             setSelectedFile(file); 
         }
     };
+
 
     const fillPdfField = async () => {
         if (!getCiaTemplate) return;
@@ -174,27 +153,21 @@ export default function Page() {
     }
 
 
-
     const convertPdfToImage = async (base64Data: string) => {
         const pdfjsLib = await import('pdfjs-dist');
         pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
         const pdfData = atob(base64Data.split(',')[1]);
         const pdfArray = new Uint8Array(pdfData.length);
         for (let i = 0; i < pdfData.length; i++) {
             pdfArray[i] = pdfData.charCodeAt(i);
         }
-
         const pdf = await pdfjsLib.getDocument(pdfArray).promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 2 });
-
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-
         await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-
         canvas.toBlob((blob) => {
             const url = URL.createObjectURL(blob!);
             const a = document.createElement('a');
@@ -206,26 +179,15 @@ export default function Page() {
         }, 'image/jpeg');
     };
 
+
     const clearUploadedFiles = () => {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
     };
-    /**
-     * ! MISC FUNCTIONALITY
-     */
-
-
-    /**
-     * ! COLOR SCHEMA
-     * * bg-neutral-100
-     * * bg-neutral-200
-     */
-
+    
 
     return (
         <main data-section="whole page" className="bg-white text-black h-screen">
-
-
             <nav className="flex gap-2 justify-between bg-neutral-100 px-8">
                 <button
                     onClick={() => window.location.href = '/'}
@@ -287,28 +249,28 @@ export default function Page() {
                     </>
                 )}
             </section>
+
+
             <section data-section="fun buttons" className="p-8 h-full bg-neutral-100">
                 <section className="py-2 text-black/60">
                     Quick actions
                 </section>
                 <section className="flex gap-8">
-
+                    
+                    {/* PRIMARY BUTTON */}
                     <div
                         onClick={async () => {
                             await processInvoice(getUploadedFiles[0]?.data || '');
                             await fillPdfField();
                         }}
                         className="border-2 border-dashed border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
-
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                         </svg>
-
                         <div className="text-center">
                             <h3 className="font-semibold text-gray-700 mb-2">Auto Generate Cover Sheet</h3>
                             <p className="text-sm text-gray-500">Upload CIA template to begin</p>
                         </div>
-
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -331,7 +293,6 @@ export default function Page() {
                                 </>
                             )}
                         </button>
-
                         <input
                             ref={ciaInputRef}
                             type="file"
@@ -341,6 +302,8 @@ export default function Page() {
                         />
                     </div>
 
+
+                    {/* PDF TO JPEG BUTTON */}
                     <div
                         onClick={async () => {
                             const pdfData = getUploadedFiles[0]?.data || '';
@@ -349,7 +312,9 @@ export default function Page() {
                         className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
                         pdf to jpeg (single)
                     </div>
-
+                    
+                    
+                    {/* TBD */}
                     <div className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">add blank & support sheet</div>
                 </section>
             </section>
