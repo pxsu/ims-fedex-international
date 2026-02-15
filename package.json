@@ -13,7 +13,7 @@
     "@react-pdf/renderer": "^4.3.2",
     "@uiw/react-split": "^5.9.3",
     "dommatrix": "^0.1.1",
-    "firebase": "^12.8.0",
+    "firebase": "^12.9.0",
     "next": "16.0.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^3.4.120",

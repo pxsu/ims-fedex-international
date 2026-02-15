@@ -6,6 +6,8 @@ import { PDFDocument } from 'pdf-lib';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import * as XLSX from 'xlsx';
+import { setDoc, doc } from 'firebase/firestore';
+import { db } from "@/firebase"
 
 {/* REQUIREMENT: GLOBAL WORKER */ }
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -63,6 +65,7 @@ export default function Page() {
     const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
     const [getExcelTemplate, setExcelTemplate] = useState<any[]>([]);
     const [getExcelModal, setExcelModal] = useState(false);
+    const [getExtractedExcelData, setExtractedExcelData] = useState<ExtractedData | null>(null);
     const handleExcelDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDraggingExcel(true);
@@ -80,24 +83,6 @@ export default function Page() {
             setExcelModal(true);
         }
     };
-    const handleExcelFiles = async (files: FileList) => {
-        const fileDataArray = await Promise.all(
-            Array.from(files).map(async (file) => {
-                const base64 = await convertFileToBase64(file);
-                return {
-                    name: file.name,
-                    size: file.size,
-                    type: file.type,
-                    lastModified: file.lastModified,
-                    data: base64
-                };
-            })
-        );
-        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(fileDataArray));
-        setExcelTemplate(fileDataArray);
-        processExcelData();
-        console.log(fileDataArray);
-    }
     useEffect(() => {
         if (getExcelModal) {
             document.body.style.overflow = 'hidden';
@@ -108,26 +93,84 @@ export default function Page() {
             document.body.style.overflow = 'unset';
         };
     }, [getExcelModal]);
-    const processExcelData = async () => {
-        const base64Data = getExcelTemplate[0]?.data;
+    const handleExcelFiles = async (files: FileList) => {
+        const file = files[0];
+        const arrayBuffer = await file.arrayBuffer();
+        const base64 = await convertFileToBase64(file);
+        const fileData = {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified,
+            data: base64
+        };
+        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify([fileData]));
+        setExcelTemplate([fileData]);
+        processExcelData(arrayBuffer);
+    }
+    interface ExcelRow {
+        __EMPTY?: string;
+        __EMPTY_1?: string | number;
+        __EMPTY_3?: string | number;
+        __EMPTY_10?: string | number;
+        __EMPTY_4?: string | number;
+        __EMPTY_5?: string | number;
+        __EMPTY_12?: string;
+        __EMPTY_13?: string;
+    }
+    interface GLAccount {
+        description: string | null;
+        gl_account: string | null;
+        cost_centre: string | null;
+    }
+    interface ExtractedData {
+        vendorEmpNumber: number | null;
+        vendorEmpName: string | null;
+        relevant_gls: GLAccount[];
+        province: string | null;
+        taxValue: string | null;
+        costCentre: number | null;
+        currency: 'CAD' | 'USD' | null;
+    }
+    const processExcelData = async (arrayBuffer: ArrayBuffer): Promise<void> => {
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(sheet);
 
-        // Convert base64 to array buffer
-        const binaryString = atob(base64Data.split(',')[1]);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
+        const findRow = (text: string) => jsonData.find(row => row.__EMPTY?.includes(text));
 
-        // Read Excel file
-        const workbook = XLSX.read(bytes, { type: 'array' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        // Extract values
+        const vendorRow = findRow('VENDOR/EMP #:');
+        const provinceRow = findRow('SELECT PROVINCE');
+        const totalRow = jsonData.find(row => row.__EMPTY_3?.toString().trim() === 'Total');
 
-        console.log(jsonData);
-        return jsonData;
+        // Get GL accounts with values (filter out empty AMOUNT fields)
+        const relevant_gls = jsonData
+            .filter(row => row.__EMPTY_3 && typeof row.__EMPTY_3 === 'number' && row.__EMPTY_5)
+            .map(row => ({
+                description: row.__EMPTY?.toString() || null,
+                gl_account: row.__EMPTY_3?.toString() || null,
+                cost_centre: row.__EMPTY_4?.toString() || null,
+            }));
+
+        // Determine currency (check which column in Total row has value)
+        const currency: 'CAD' | 'USD' | null = totalRow?.__EMPTY_5 ? 'CAD' : 'USD';
+        setExtractedExcelData({
+            vendorEmpNumber: vendorRow?.__EMPTY_1 ? Number(vendorRow.__EMPTY_1) : null,
+            vendorEmpName: vendorRow?.__EMPTY_4?.toString() || null,
+            relevant_gls,
+            province: provinceRow?.__EMPTY_1?.toString() || null,
+            taxValue: provinceRow?.__EMPTY_3?.toString() || null,
+            costCentre: provinceRow?.__EMPTY_4 ? Number(provinceRow.__EMPTY_4) : null,
+            currency,
+        });
+    };
+    const submitToFirebase = async (data: ExtractedData) => {
+        await setDoc(doc(db, 'vendor_data', `CIA-${data.vendorEmpNumber}`), data);
     };
 
 
+    // * FILE TO BASE64
     const convertFileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -138,7 +181,7 @@ export default function Page() {
     }
 
 
-    {/* CHATGPT API CALL */ }
+    // * CHATGPT API CALL
     const [getGptData, setGptData] = useState<any>(null);
     const processInvoice = async (base64: string) => {
         // Extract data from PDF
@@ -185,6 +228,7 @@ export default function Page() {
     };
 
 
+    // * FILL PDF FIELD
     const fillPdfField = async () => {
         if (!getCiaTemplate) return;
         const arrayBuffer = await getCiaTemplate.arrayBuffer();
@@ -211,6 +255,7 @@ export default function Page() {
     }
 
 
+    // * CONVERT PDF TO IMAGE
     const convertPdfToImage = async (base64Data: string) => {
         const pdfjsLib = await import('pdfjs-dist');
         pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -238,6 +283,7 @@ export default function Page() {
     };
 
 
+    // * CIA SELECTION CODE
     const ciaInputRef = useRef<HTMLInputElement>(null);
     const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
     const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -330,7 +376,7 @@ export default function Page() {
                 <section className="py-2 text-black/60">
                     Quick actions
                 </section>
-                <section className="flex gap-8">
+                <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
 
 
                     {/* PRIMARY BUTTON */}
@@ -339,7 +385,7 @@ export default function Page() {
                             await processInvoice(getUploadedFiles[0]?.data || '');
                             await fillPdfField();
                         }}
-                        className="relative border-2 border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
+                        className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                         </svg>
@@ -393,7 +439,7 @@ export default function Page() {
                             const pdfData = getUploadedFiles[0]?.data || '';
                             if (pdfData) await convertPdfToImage(pdfData);
                         }}
-                        className="relative border-2 border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
+                        className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                         </svg>
@@ -405,7 +451,7 @@ export default function Page() {
 
 
                     {/* TBD */}
-                    <div className="relative border-2 border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
+                    <div className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                         </svg>
@@ -421,14 +467,14 @@ export default function Page() {
                         onDragOver={handleExcelDragOver}
                         onDragLeave={handleExcelDragLeave}
                         onDrop={handleExcelDrop}
-                        className={`relative border-2 w-80 h-80 rounded-xl transition-all flex flex-col justify-center items-center gap-4 p-6 border-gray-300
-                            ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
+                        className={`relative border-2 w-full aspect-square rounded-xl transition-all flex flex-col justify-center items-center gap-4 p-6 border-gray-300 cursor-pointer hover:border-purple-500 hover:bg-purple-50
+                ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
                         {getExcelTemplate.length > 0 && getExcelModal ? (
                             <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-purple-500"></div>
                         ) : (
                             <div className="text-center">
                                 <h3 className="font-semibold text-gray-700">EXCEL to FIRESTORE</h3>
-                                <p className="text-sm text-gray-500 -translate-y-1"></p>
+                                <p className="text-sm text-gray-500 -translate-y-1">drag & drop excel file</p>
                             </div>
                         )}
                     </div>
@@ -455,76 +501,79 @@ export default function Page() {
                             </button>
                         </div>
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2">
-                                <div>
-                                    <p className="text-xs text-gray-500">VENDOR NUMBER</p>
-                                    <p className="font-semibold">10000112571</p>
+                            {getExtractedExcelData && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2">
+                                        <div>
+                                            <p className="text-xs text-gray-500">VENDOR NUMBER</p>
+                                            <p className="font-semibold">{getExtractedExcelData.vendorEmpNumber}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-gray-500">VENDOR NAME</p>
+                                            <p className="font-semibold">{getExtractedExcelData.vendorEmpName}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-2">GL ACCOUNTS</p>
+                                        <table className="w-full border-collapse text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100">
+                                                    <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
+                                                    <th className="border p-2 text-center">GL ACCOUNT</th>
+                                                    <th className="border p-2 text-center">COST CENTRE</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {getExtractedExcelData.relevant_gls.map((gl, index) => (
+                                                    <tr key={index}>
+                                                        <td className="border p-2">{gl.description}</td>
+                                                        <td className="border p-2 text-center font-semibold">{gl.gl_account}</td>
+                                                        <td className="border p-2 text-center font-semibold">{gl.cost_centre}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-2">PROVINCE & TAX CODES</p>
+                                        <table className="w-full border-collapse text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100">
+                                                    <th className="border p-2 text-left">PROVINCE</th>
+                                                    <th className="border p-2 text-left">TAX 1</th>
+                                                    <th className="border p-2 text-left">TAX 2</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td className="border p-2 font-semibold">{getExtractedExcelData.province}</td>
+                                                    <td className="border p-2">{getExtractedExcelData.taxValue}</td>
+                                                    <td className="border p-2 text-gray-400">N/A</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2">
+                                                <input type="radio" name="currency" checked={getExtractedExcelData.currency === 'CAD'} readOnly />
+                                                <span>CAD</span>
+                                            </label>
+                                            <label className="flex items-center gap-2">
+                                                <input type="radio" name="currency" checked={getExtractedExcelData.currency === 'USD'} readOnly />
+                                                <span>USD</span>
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-gray-500">VENDOR NAME</p>
-                                    <p className="font-semibold">MERCEDES BENZ GREEN LANE</p>
-                                </div>
-                            </div>
+                            )}
                             <div>
-                                <p className="text-xs text-gray-500 mb-2">GL ACCOUNTS</p>
-                                <table className="w-full border-collapse text-sm">
-                                    <thead>
-                                        <tr className="bg-gray-100">
-                                            <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
-                                            <th className="border p-2 text-center">GL ACCOUNT</th>
-                                            <th className="border p-2 text-center">COST CENTRE</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td className="border p-2">FEDEX PARTS</td>
-                                            <td className="border p-2 text-center font-semibold">657600</td>
-                                            <td className="border p-2 text-center font-semibold">1003705</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="border p-2">VENDOR OUTSIDE LABOR</td>
-                                            <td className="border p-2 text-center font-semibold">657100</td>
-                                            <td className="border p-2 text-center font-semibold">1003705</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="border p-2">VENDOR SUPPLIED PARTS</td>
-                                            <td className="border p-2 text-center font-semibold">657670</td>
-                                            <td className="border p-2 text-center font-semibold">1003705</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 mb-2">PROVINCE & TAX CODES</p>
-                                <table className="w-full border-collapse text-sm">
-                                    <thead>
-                                        <tr className="bg-gray-100">
-                                            <th className="border p-2 text-left">PROVINCE</th>
-                                            <th className="border p-2 text-left">TAX 1</th>
-                                            <th className="border p-2 text-left">TAX 2</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td className="border p-2 font-semibold">ON</td>
-                                            <td className="border p-2">HST-122810</td>
-                                            <td className="border p-2 text-gray-400">N/A</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2">
-                                        <input type="radio" name="currency" checked readOnly />
-                                        <span>CAD</span>
-                                    </label>
-                                    <label className="flex items-center gap-2">
-                                        <input type="radio" name="currency" readOnly />
-                                        <span>USD</span>
-                                    </label>
-                                </div>
+                                <button
+                                    onClick={() => { submitToFirebase(getExtractedExcelData!) }}
+                                    className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
+                                    {'press me :)'}
+                                </button>
                             </div>
                         </div>
                     </div>
