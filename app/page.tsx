@@ -3,7 +3,6 @@
 import { useState, useRef } from "react";
 import { pdfjs } from "react-pdf";
 import { PDFDocument } from 'pdf-lib';
-import { useRouter } from 'next/navigation';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -11,10 +10,8 @@ import 'react-pdf/dist/Page/TextLayer.css';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function Page() {
-    const router = useRouter();
 
-
-    {/* DRAGGING CODE */ }
+    // *  DRAGGING CODE
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
@@ -26,6 +23,9 @@ export default function Page() {
         e.preventDefault();
         setIsDragging(false);
     }
+
+
+    // * TOP BAR FUNCTIONALITY
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDragging(false);
@@ -40,6 +40,59 @@ export default function Page() {
             handleFiles(files);
         }
     };
+    const handleFiles = async (files: FileList) => {
+        const fileDataArray = await Promise.all(
+            Array.from(files).map(async (file) => {
+                const base64 = await convertFileToBase64(file);
+                return {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: file.lastModified,
+                    data: base64
+                };
+            })
+        );
+        sessionStorage.setItem('uploadedFiles', JSON.stringify(fileDataArray));
+        setUploadedFiles(fileDataArray);
+    }
+
+
+    // * EXCEL FUNCTIONALITY
+    const excelInputRef = useRef<HTMLInputElement>(null);
+    const [getExcelTemplate, setExcelTemplate] = useState<any>(null);
+    const handleExcelTemplateFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setCiaTemplate(file);
+        }
+    };
+    const handleExcelDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            handleExcelFiles(files);
+        }
+    }
+    const handleExcelFiles = async (files: FileList) => {
+        const fileDataArray = await Promise.all(
+            Array.from(files).map(async (file) => {
+                const base64 = await convertFileToBase64(file);
+                return {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: file.lastModified,
+                    data: base64
+                };
+            })
+        );
+        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(fileDataArray));
+        setUploadedFiles(fileDataArray);
+    }
+
+
     const convertFileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -47,24 +100,6 @@ export default function Page() {
             reader.onload = () => resolve(reader.result as string);
             reader.onerror = (error) => reject(error);
         });
-    }
-    const handleFiles = async (files: FileList) => {
-        const fileDataArray = await Promise.all(
-            Array.from(files).map(async (file) => {
-                // Convert file to Base64 string so we can store it
-                const base64 = await convertFileToBase64(file);
-                return {
-                    name: file.name,
-                    size: file.size,
-                    type: file.type,
-                    lastModified: file.lastModified,
-                    data: base64 // The actual file content as Base64
-                };
-            })
-        );
-        // Store in sessionStorage
-        sessionStorage.setItem('uploadedFiles', JSON.stringify(fileDataArray));
-        setUploadedFiles(fileDataArray);
     }
 
 
@@ -113,19 +148,7 @@ export default function Page() {
         setGptData(parsedData);
         return JSON.parse(cleanJson);
     };
-
-
-    const [getSelectedFile, setSelectedFile] = useState<File | null>(null);
-    const ciaInputRef = useRef<HTMLInputElement>(null);
-    const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
-    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setCiaTemplate(file);
-            setSelectedFile(file);
-        }
-    };
-
+    
 
     const fillPdfField = async () => {
         if (!getCiaTemplate) return;
@@ -180,6 +203,17 @@ export default function Page() {
     };
 
 
+    const ciaInputRef = useRef<HTMLInputElement>(null);
+    const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
+    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setCiaTemplate(file);
+        }
+    };
+
+
+
     const clearUploadedFiles = () => {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
@@ -188,17 +222,17 @@ export default function Page() {
 
     return (
         <main data-section="whole page" className="bg-white text-black h-screen">
-            <nav className="flex gap-2 justify-between bg-neutral-100 px-8">
+            <nav className="flex gap-2 justify-between bg-neutral-100 p-2 px-8 items-center h-14">
                 <button
                     onClick={() => window.location.href = '/'}
-                    className="p-2 px-4 text-[24px] font-bold text-black hover:text-transparent hover:[-webkit-text-stroke:1px_black] transition-all cursor-pointer">
+                    className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(168_85_247)] transition-all cursor-pointer">
                     ims
                 </button>
                 <div className="flex gap-2 items-center">
-                    <button className="p-2 px-4 bg-black text-white rounded-md hover:bg-white hover:border-2 hover:border-black hover:text-black transition-colors cursor-pointer">
+                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
                         btn 1
                     </button>
-                    <button className="p-2 px-4 bg-black text-white rounded-md hover:bg-white hover:border-2 hover:border-black hover:text-black transition-colors cursor-pointer">
+                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
                         btn 2
                     </button>
                 </div>
@@ -229,7 +263,7 @@ export default function Page() {
                             <div className="absolute bottom-0 w-full flex gap-3 items-center justify-center p-4">
                                 <button
                                     onClick={clearUploadedFiles}
-                                    className="p-1 rounded-md bg-red-500 text-white hover:bg-white hover:text-red-500 hover:border-2 hover:border-red-500 transition-all cursor-pointer">
+                                    className="bg-red-500 p-1 rounded-md text-white hover:bg-white hover:text-red-500 hover:border-2 hover:border-red-500 transition-all cursor-pointer">
                                     <div className="flex px-1 items-center gap-1">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -341,6 +375,7 @@ export default function Page() {
                         </div>
                     </div>
 
+
                     {/* TBD */}
                     <div className="relative border-2 border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
@@ -349,6 +384,23 @@ export default function Page() {
                         <div className="text-center">
                             <h3 className="font-semibold text-gray-700">Add supporting sheets</h3>
                             <p className="text-sm text-gray-500 -translate-y-1">blank + support sheet</p>
+                        </div>
+                    </div>
+
+
+                    {/* adding vendors to database */}
+                    <div
+                        onClick={async () => {
+                            const pdfData = getUploadedFiles[0]?.data || '';
+                            if (pdfData) await convertPdfToImage(pdfData);
+                        }}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className="relative border-2 border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
+                        <div className="text-center">
+                            <h3 className="font-semibold text-gray-700">EXCEL to FIRESTORE</h3>
+                            <p className="text-sm text-gray-500 -translate-y-1"></p>
                         </div>
                     </div>
                 </section>
