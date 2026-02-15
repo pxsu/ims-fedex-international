@@ -1,19 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { pdfjs } from "react-pdf";
 import { PDFDocument } from 'pdf-lib';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import * as XLSX from 'xlsx';
 
 {/* REQUIREMENT: GLOBAL WORKER */ }
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function Page() {
-
-    // *  DRAGGING CODE
-    const [isDragging, setIsDragging] = useState(false);
+    // * TOP BAR FUNCTIONALITY
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -23,9 +23,6 @@ export default function Page() {
         e.preventDefault();
         setIsDragging(false);
     }
-
-
-    // * TOP BAR FUNCTIONALITY
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDragging(false);
@@ -56,25 +53,33 @@ export default function Page() {
         sessionStorage.setItem('uploadedFiles', JSON.stringify(fileDataArray));
         setUploadedFiles(fileDataArray);
     }
+    const clearUploadedFiles = () => {
+        setUploadedFiles([]);
+        sessionStorage.removeItem('uploadedFiles');
+    };
 
 
     // * EXCEL FUNCTIONALITY
-    const excelInputRef = useRef<HTMLInputElement>(null);
-    const [getExcelTemplate, setExcelTemplate] = useState<any>(null);
-    const handleExcelTemplateFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setCiaTemplate(file);
-        }
+    const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
+    const [getExcelTemplate, setExcelTemplate] = useState<any[]>([]);
+    const [getExcelModal, setExcelModal] = useState(false);
+    const handleExcelDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingExcel(true);
     };
+    const handleExcelDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingExcel(false);
+    }
     const handleExcelDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
-        setIsDragging(false);
+        setIsDraggingExcel(false);
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
             handleExcelFiles(files);
+            setExcelModal(true);
         }
-    }
+    };
     const handleExcelFiles = async (files: FileList) => {
         const fileDataArray = await Promise.all(
             Array.from(files).map(async (file) => {
@@ -89,8 +94,38 @@ export default function Page() {
             })
         );
         sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(fileDataArray));
-        setUploadedFiles(fileDataArray);
+        setExcelTemplate(fileDataArray);
+        processExcelData();
+        console.log(fileDataArray);
     }
+    useEffect(() => {
+        if (getExcelModal) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [getExcelModal]);
+    const processExcelData = async () => {
+        const base64Data = getExcelTemplate[0]?.data;
+
+        // Convert base64 to array buffer
+        const binaryString = atob(base64Data.split(',')[1]);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Read Excel file
+        const workbook = XLSX.read(bytes, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        console.log(jsonData);
+        return jsonData;
+    };
 
 
     const convertFileToBase64 = (file: File): Promise<string> => {
@@ -148,7 +183,7 @@ export default function Page() {
         setGptData(parsedData);
         return JSON.parse(cleanJson);
     };
-    
+
 
     const fillPdfField = async () => {
         if (!getCiaTemplate) return;
@@ -210,13 +245,6 @@ export default function Page() {
         if (file) {
             setCiaTemplate(file);
         }
-    };
-
-
-
-    const clearUploadedFiles = () => {
-        setUploadedFiles([]);
-        sessionStorage.removeItem('uploadedFiles');
     };
 
 
@@ -390,21 +418,118 @@ export default function Page() {
 
                     {/* adding vendors to database */}
                     <div
-                        onClick={async () => {
-                            const pdfData = getUploadedFiles[0]?.data || '';
-                            if (pdfData) await convertPdfToImage(pdfData);
-                        }}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        className="relative border-2 border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
-                        <div className="text-center">
-                            <h3 className="font-semibold text-gray-700">EXCEL to FIRESTORE</h3>
-                            <p className="text-sm text-gray-500 -translate-y-1"></p>
-                        </div>
+                        onDragOver={handleExcelDragOver}
+                        onDragLeave={handleExcelDragLeave}
+                        onDrop={handleExcelDrop}
+                        className={`relative border-2 w-80 h-80 rounded-xl transition-all flex flex-col justify-center items-center gap-4 p-6 border-gray-300
+                            ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
+                        {getExcelTemplate.length > 0 && getExcelModal ? (
+                            <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-purple-500"></div>
+                        ) : (
+                            <div className="text-center">
+                                <h3 className="font-semibold text-gray-700">EXCEL to FIRESTORE</h3>
+                                <p className="text-sm text-gray-500 -translate-y-1"></p>
+                            </div>
+                        )}
                     </div>
                 </section>
             </section>
+
+
+            {getExcelModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-xl w-144 min-h-96 max-h-[80vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex gap-1 justify-center items-center">
+                                <div>Adding</div>
+                                <span>"{getExcelTemplate[0]?.name.length > 30 ? `${getExcelTemplate[0]?.name.slice(0, 30)}...` : getExcelTemplate[0]?.name}"</span>
+                            </div>
+                            <button
+                                onClick={() => setExcelModal(false)}
+                                className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
+                                <div className="flex px-1 items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                </div>
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2">
+                                <div>
+                                    <p className="text-xs text-gray-500">VENDOR NUMBER</p>
+                                    <p className="font-semibold">10000112571</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500">VENDOR NAME</p>
+                                    <p className="font-semibold">MERCEDES BENZ GREEN LANE</p>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-2">GL ACCOUNTS</p>
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-100">
+                                            <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
+                                            <th className="border p-2 text-center">GL ACCOUNT</th>
+                                            <th className="border p-2 text-center">COST CENTRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td className="border p-2">FEDEX PARTS</td>
+                                            <td className="border p-2 text-center font-semibold">657600</td>
+                                            <td className="border p-2 text-center font-semibold">1003705</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="border p-2">VENDOR OUTSIDE LABOR</td>
+                                            <td className="border p-2 text-center font-semibold">657100</td>
+                                            <td className="border p-2 text-center font-semibold">1003705</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="border p-2">VENDOR SUPPLIED PARTS</td>
+                                            <td className="border p-2 text-center font-semibold">657670</td>
+                                            <td className="border p-2 text-center font-semibold">1003705</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-2">PROVINCE & TAX CODES</p>
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-100">
+                                            <th className="border p-2 text-left">PROVINCE</th>
+                                            <th className="border p-2 text-left">TAX 1</th>
+                                            <th className="border p-2 text-left">TAX 2</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td className="border p-2 font-semibold">ON</td>
+                                            <td className="border p-2">HST-122810</td>
+                                            <td className="border p-2 text-gray-400">N/A</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2">
+                                        <input type="radio" name="currency" checked readOnly />
+                                        <span>CAD</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input type="radio" name="currency" readOnly />
+                                        <span>USD</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main >
     )
 }
