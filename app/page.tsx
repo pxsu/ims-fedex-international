@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { pdfjs } from "react-pdf";
 import { PDFDocument } from 'pdf-lib';
+import { useRouter } from 'next/navigation';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -10,6 +11,12 @@ import 'react-pdf/dist/Page/TextLayer.css';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function Page() {
+
+
+    /**
+     * ! SITE FUNCTIONALITY
+     */
+    const router = useRouter();
 
 
     /**
@@ -83,9 +90,8 @@ export default function Page() {
      * ! CHATGPT API CALL
      */
     const [getGptData, setGptData] = useState<any>(null);
-    const processInvoice = async (base64: string, name: string) => {
+    const processInvoice = async (base64: string) => {
         // Extract data from PDF
-        const fileName = name;
         const pdfData = atob(base64.split(',')[1]);
         const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
         const pages: string[] = [];
@@ -114,8 +120,6 @@ export default function Page() {
                             "invoice_date": "",
                             "po_number": "",
                             "subtotal": "",
-                            "tax": "",
-                            "total": ""
                         }
                         Invoice text:
                     ${pages.join('\n')}`
@@ -127,31 +131,38 @@ export default function Page() {
         const content = data.choices[0].message.content;
         const cleanJson = content.replace(/```json\n?|```\n?/g, '').trim();
         const parsedData = JSON.parse(cleanJson);
+        console.log(parsedData);
         setGptData(parsedData);
         return JSON.parse(cleanJson);
     };
+
     const [getSelectedFile, setSelectedFile] = useState<File | null>(null);
     const ciaInputRef = useRef<HTMLInputElement>(null);
     const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
+
     const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setCiaTemplate(file);
-            setSelectedFile(file); // For fillPdfField to use
+            setSelectedFile(file); 
         }
     };
+
     const fillPdfField = async () => {
         if (!getCiaTemplate) return;
-
         const arrayBuffer = await getCiaTemplate.arrayBuffer();
         const pdfDoc = await PDFDocument.load(arrayBuffer);
         const form = pdfDoc.getForm();
-
-        form.getTextField('FIELD_vendorNumber').setText('anothea');
-        form.getTextField('FIELD_vendorName').setText('NAME');
-
+        form.getTextField('FIELD_vendorNumber').setText(getGptData?.vendor_number || 'N/A');
+        form.getTextField('FIELD_vendorName').setText(getGptData?.vendor_name || 'N/A');
+        form.getTextField('FIELD_invoiceDate').setText(getGptData?.invoice_date || 'N/A');
+        form.getTextField('FIELD_invoiceNumber').setText(getGptData?.invoice_number || 'N/A');
+        form.getTextField('GL_A1:A1').setText('N/A');
+        form.getTextField('GL_A1:B1').setText('N/A');
+        form.getTextField('GL_A1:C1').setText('N/A');
+        form.getTextField('GL_A1:D1').setText(getGptData?.subtotal || 'N/A');
+        form.getTextField('FIELD_poValue').setText(getGptData?.po_number || 'N/A');
         form.flatten();
-
         const pdfBytes = await pdfDoc.save();
         const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
@@ -163,19 +174,7 @@ export default function Page() {
     }
 
 
-    /**
-     * ! CHATGPT API CALL
-     */
 
-
-    /**
-     * ------------------------------------------------------------------
-     */
-
-
-    /**
-     * ! MISC FUNCTIONALITY
-     */
     const convertPdfToImage = async (base64Data: string) => {
         const pdfjsLib = await import('pdfjs-dist');
         pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -216,15 +215,40 @@ export default function Page() {
      */
 
 
+    /**
+     * ! COLOR SCHEMA
+     * * bg-neutral-100
+     * * bg-neutral-200
+     */
+
+
     return (
         <main data-section="whole page" className="bg-white text-black h-screen">
+
+
+            <nav className="flex gap-2 justify-between bg-neutral-100 px-8">
+                <button
+                    onClick={() => window.location.href = '/'}
+                    className="p-2 px-4 text-[24px] font-bold text-black hover:text-transparent hover:[-webkit-text-stroke:1px_black] transition-all cursor-pointer">
+                    ims
+                </button>
+                <div className="flex gap-2 items-center">
+                    <button className="p-2 px-4 bg-black text-white rounded-md hover:bg-white hover:border-2 hover:border-black hover:text-black transition-colors cursor-pointer">
+                        btn 1
+                    </button>
+                    <button className="p-2 px-4 bg-black text-white rounded-md hover:bg-white hover:border-2 hover:border-black hover:text-black transition-colors cursor-pointer">
+                        btn 2
+                    </button>
+                </div>
+            </nav>
+
+
             <section
                 data-section="drag and drop area"
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`flex justify-center items-center border-b-2 h-1/3 transition-colors 
-                            ${isDragging ? 'bg-neutral-200' : ''}`}>
+                className={`flex justify-center items-center h-1/3 transition-all border-y-2 border-gray-100 ${isDragging ? 'border-purple-500 bg-purple-50' : 'bg-gray-50'}`}>
                 {getUploadedFiles.length > 0 ? (
                     <>
                         <div className="relative flex h-full w-full items-center justify-center">
@@ -246,8 +270,11 @@ export default function Page() {
                         <div className="flex gap-2">
                             <span
                                 onClick={() => fileInputRef.current?.click()}
-                                className="hover:underline cursor-pointer">
-                                select pdf ❌
+                                className="px-4 py-2 rounded-lg cursor-pointer text-gray-600 hover:text-purple-600 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                </svg>
+                                select pdf
                             </span>
                             <input
                                 ref={fileInputRef}
@@ -260,14 +287,51 @@ export default function Page() {
                     </>
                 )}
             </section>
-            <section data-section="fun buttons" className="p-8">
+            <section data-section="fun buttons" className="p-8 h-full bg-neutral-100">
+                <section className="py-2 text-black/60">
+                    Quick actions
+                </section>
                 <section className="flex gap-8">
-                    <div onClick={() => fillPdfField()} className="border-2 w-80 h-80 rounded-xl text-lg hover:bg-black/5 hover:shadow-md cursor-pointer flex flex-col justify-center items-center">
+
+                    <div
+                        onClick={async () => {
+                            await processInvoice(getUploadedFiles[0]?.data || '');
+                            await fillPdfField();
+                        }}
+                        className="border-2 border-dashed border-gray-300 w-80 h-80 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
+
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                        </svg>
+
+                        <div className="text-center">
+                            <h3 className="font-semibold text-gray-700 mb-2">Auto Generate Cover Sheet</h3>
+                            <p className="text-sm text-gray-500">Upload CIA template to begin</p>
+                        </div>
+
                         <button
-                            onClick={() => ciaInputRef.current?.click()}
-                            className="flex hover:underline cursor-pointer">
-                            {getCiaTemplate ? `${getCiaTemplate.name} ✅` : 'set cia ❌'}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                ciaInputRef.current?.click();
+                            }}
+                            className="px-4 py-2 rounded-lg border-2 border-gray-300 hover:border-purple-500 hover:bg-white transition-all flex items-center gap-2">
+                            {getCiaTemplate ? (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-green-600">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                    </svg>
+                                    <span className="text-green-600 text-sm">{getCiaTemplate.name}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-500">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                    </svg>
+                                    <span className="text-gray-600 text-sm">Set CIA Template</span>
+                                </>
+                            )}
                         </button>
+
                         <input
                             ref={ciaInputRef}
                             type="file"
@@ -276,17 +340,19 @@ export default function Page() {
                             className="hidden"
                         />
                     </div>
-                    <button
+
+                    <div
                         onClick={async () => {
                             const pdfData = getUploadedFiles[0]?.data || '';
                             if (pdfData) await convertPdfToImage(pdfData);
                         }}
                         className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">
                         pdf to jpeg (single)
-                    </button>
-                    <button className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">add blank & support sheet</button>
+                    </div>
+
+                    <div className="border-2 w-80 h-80 rounded-xl flex justify-center items-center text-lg hover:bg-black/5 hover:shadow-md cursor-pointer">add blank & support sheet</div>
                 </section>
             </section>
-        </main>
+        </main >
     )
 }
