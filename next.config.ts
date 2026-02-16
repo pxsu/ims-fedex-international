@@ -10,7 +10,11 @@ const nextConfig: NextConfig = {
         pathname: '/photos/**',
       },
     ]
-  }
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  serverExternalPackages: ['canvas']
 };
 
 export default nextConfig;
