@@ -1,0 +1,201 @@
+[debug] [2026-02-16T08:50:50.111Z] ----------------------------------------------------------------------
+[debug] [2026-02-16T08:50:50.113Z] Command:       /Users/pavi/.nvm/versions/node/v22.18.0/bin/node /Users/pavi/.nvm/versions/node/v22.18.0/bin/firebase deploy
+[debug] [2026-02-16T08:50:50.113Z] CLI Version:   15.6.0
+[debug] [2026-02-16T08:50:50.113Z] Platform:      darwin
+[debug] [2026-02-16T08:50:50.113Z] Node Version:  v22.18.0
+[debug] [2026-02-16T08:50:50.113Z] Time:          Mon Feb 16 2026 03:50:50 GMT-0500 (Eastern Standard Time)
+[debug] [2026-02-16T08:50:50.113Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-02-16T08:50:50.808Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-02-16T08:50:50.808Z] > authorizing via signed-in user (hyprrman96@gmail.com)
+[debug] [2026-02-16T08:50:50.809Z] [iam] checking project ims-fedex for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-02-16T08:50:50.809Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:50.809Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:50.809Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions [none]
+[debug] [2026-02-16T08:50:50.809Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions  x-goog-user-project=ims-fedex
+[debug] [2026-02-16T08:50:50.809Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-02-16T08:50:51.120Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions 200
+[debug] [2026-02-16T08:50:51.120Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-02-16T08:50:51.121Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:51.121Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:51.121Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-02-16T08:50:51.121Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-02-16T08:50:51.499Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2026-02-16T08:50:51.499Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-02-16T08:50:51.500Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:51.500Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:51.501Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ims-fedex [none]
+[debug] [2026-02-16T08:50:52.008Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ims-fedex 200
+[debug] [2026-02-16T08:50:52.009Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ims-fedex {"projectId":"ims-fedex","projectNumber":"141882002996","displayName":"ims-fedex","name":"projects/ims-fedex","resources":{"hostingSite":"ims-fedex"},"state":"ACTIVE","etag":"1_7f8ef0f1-4666-4dc1-afa5-5818e89812df"}
+[debug] [2026-02-16T08:50:52.829Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:52.829Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:52.829Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites pageToken=&pageSize=10
+[debug] [2026-02-16T08:50:53.756Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites 200
+[debug] [2026-02-16T08:50:53.757Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites {"sites":[{"name":"projects/ims-fedex/sites/ims-fedex","defaultUrl":"https://ims-fedex.web.app","appId":"1:141882002996:web:1c7ac4a8af29b7a6e74461","type":"DEFAULT_SITE"}]}
+[debug] [2026-02-16T08:50:53.757Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:53.757Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:53.758Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:141882002996:web:1c7ac4a8af29b7a6e74461/config [none]
+[debug] [2026-02-16T08:50:54.418Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:141882002996:web:1c7ac4a8af29b7a6e74461/config 200
+[debug] [2026-02-16T08:50:54.419Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:141882002996:web:1c7ac4a8af29b7a6e74461/config {"projectId":"ims-fedex","appId":"1:141882002996:web:1c7ac4a8af29b7a6e74461","storageBucket":"ims-fedex.firebasestorage.app","apiKey":"AIzaSyCx1U7v_N4tjBJgaX27h09QvojldH3P3Hw","authDomain":"ims-fedex.firebaseapp.com","messagingSenderId":"141882002996","measurementId":"G-0HGPRVC8ZS","projectNumber":"141882002996","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 15.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-02-16T08:50:56.028Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:56.028Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:50:56.028Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites/ims-fedex [none]
+[debug] [2026-02-16T08:50:56.402Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites/ims-fedex 200
+[debug] [2026-02-16T08:50:56.403Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites/ims-fedex {"name":"projects/ims-fedex/sites/ims-fedex","defaultUrl":"https://ims-fedex.web.app","appId":"1:141882002996:web:1c7ac4a8af29b7a6e74461","type":"DEFAULT_SITE"}
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info]    ▲ Next.js 16.0.3 (Turbopack)
+
+[info]    - Environments: .env.local
+
+
+[info]    Creating an optimized production build ...
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info]  ✓ Compiled successfully in 3.7s
+
+[info]    Running TypeScript ...
+
+[info]    Collecting page data using 7 workers ...
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info]    Generating static pages using 7 workers (0/3) ...
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info] Warning: Please use the `legacy` build in Node.js environments.
+
+[info] Error occurred prerendering page "/". Read more: https://nextjs.org/docs/messages/prerender-error
+
+[info] ReferenceError: DOMMatrix is not defined
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__f8dcff9d._.js:4:117879)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:715:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:738:12)
+    at Context.commonJsRequire [as r] (.next/server/chunks/ssr/[turbopack]_runtime.js:249:12) {
+  digest: '4267169164'
+}
+
+[info] Export encountered an error on /page: /, exiting the build.
+
+[info]  ⨯ Next.js build worker exited with code: 1 and signal: null
+
+[debug] [2026-02-16T08:51:04.442Z] Error: ENOENT: no such file or directory, open '/Users/pavi/Documents/PRODUCTION/NEXTJS/PROJECTS/IMS/.next/export-marker.json'
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-02-16T08:52:40.102Z] ----------------------------------------------------------------------
+[debug] [2026-02-16T08:52:40.103Z] Command:       /Users/pavi/.nvm/versions/node/v22.18.0/bin/node /Users/pavi/.nvm/versions/node/v22.18.0/bin/firebase deploy
+[debug] [2026-02-16T08:52:40.103Z] CLI Version:   15.6.0
+[debug] [2026-02-16T08:52:40.104Z] Platform:      darwin
+[debug] [2026-02-16T08:52:40.104Z] Node Version:  v22.18.0
+[debug] [2026-02-16T08:52:40.104Z] Time:          Mon Feb 16 2026 03:52:40 GMT-0500 (Eastern Standard Time)
+[debug] [2026-02-16T08:52:40.104Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-02-16T08:52:40.770Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-02-16T08:52:40.770Z] > authorizing via signed-in user (hyprrman96@gmail.com)
+[debug] [2026-02-16T08:52:40.770Z] [iam] checking project ims-fedex for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-02-16T08:52:40.770Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:40.770Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:40.771Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions [none]
+[debug] [2026-02-16T08:52:40.771Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions  x-goog-user-project=ims-fedex
+[debug] [2026-02-16T08:52:40.771Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-02-16T08:52:41.120Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions 200
+[debug] [2026-02-16T08:52:41.121Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ims-fedex:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-02-16T08:52:41.121Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:41.121Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:41.121Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-02-16T08:52:41.121Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-02-16T08:52:41.435Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2026-02-16T08:52:41.435Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/ims-fedex/serviceAccounts/ims-fedex@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-02-16T08:52:41.436Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:41.436Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:41.437Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ims-fedex [none]
+[debug] [2026-02-16T08:52:41.798Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ims-fedex 200
+[debug] [2026-02-16T08:52:41.798Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ims-fedex {"projectId":"ims-fedex","projectNumber":"141882002996","displayName":"ims-fedex","name":"projects/ims-fedex","resources":{"hostingSite":"ims-fedex"},"state":"ACTIVE","etag":"1_7f8ef0f1-4666-4dc1-afa5-5818e89812df"}
+[debug] [2026-02-16T08:52:42.412Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:42.412Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:42.412Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites pageToken=&pageSize=10
+[debug] [2026-02-16T08:52:43.055Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites 200
+[debug] [2026-02-16T08:52:43.055Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites {"sites":[{"name":"projects/ims-fedex/sites/ims-fedex","defaultUrl":"https://ims-fedex.web.app","appId":"1:141882002996:web:1c7ac4a8af29b7a6e74461","type":"DEFAULT_SITE"}]}
+[debug] [2026-02-16T08:52:43.056Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:43.056Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:43.057Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:141882002996:web:1c7ac4a8af29b7a6e74461/config [none]
+[debug] [2026-02-16T08:52:43.342Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:141882002996:web:1c7ac4a8af29b7a6e74461/config 200
+[debug] [2026-02-16T08:52:43.342Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:141882002996:web:1c7ac4a8af29b7a6e74461/config {"projectId":"ims-fedex","appId":"1:141882002996:web:1c7ac4a8af29b7a6e74461","storageBucket":"ims-fedex.firebasestorage.app","apiKey":"AIzaSyCx1U7v_N4tjBJgaX27h09QvojldH3P3Hw","authDomain":"ims-fedex.firebaseapp.com","messagingSenderId":"141882002996","measurementId":"G-0HGPRVC8ZS","projectNumber":"141882002996","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 15.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-02-16T08:52:44.730Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:44.730Z] Checked if tokens are valid: true, expires at: 1771235395354
+[debug] [2026-02-16T08:52:44.730Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites/ims-fedex [none]
+[debug] [2026-02-16T08:52:45.342Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites/ims-fedex 200
+[debug] [2026-02-16T08:52:45.343Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ims-fedex/sites/ims-fedex {"name":"projects/ims-fedex/sites/ims-fedex","defaultUrl":"https://ims-fedex.web.app","appId":"1:141882002996:web:1c7ac4a8af29b7a6e74461","type":"DEFAULT_SITE"}
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info]    ▲ Next.js 16.0.3 (Turbopack)
+
+[info]    - Environments: .env.local
+
+
+[info]    Creating an optimized production build ...
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info]  ✓ Compiled successfully in 3.0s
+
+[info]    Running TypeScript ...
+
+[info]    Collecting page data using 7 workers ...
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info]    Generating static pages using 7 workers (0/3) ...
+
+[info] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[info] Warning: Please use the `legacy` build in Node.js environments.
+
+[info] Error occurred prerendering page "/". Read more: https://nextjs.org/docs/messages/prerender-error
+
+[info] ReferenceError: DOMMatrix is not defined
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__f8dcff9d._.js:4:117879)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:715:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:738:12)
+    at Context.commonJsRequire [as r] (.next/server/chunks/ssr/[turbopack]_runtime.js:249:12) {
+  digest: '4267169164'
+}
+
+[info] Export encountered an error on /page: /, exiting the build.
+
+[info]  ⨯ Next.js build worker exited with code: 1 and signal: null
+
+[debug] [2026-02-16T08:52:51.456Z] Error: ENOENT: no such file or directory, open '/Users/pavi/Documents/PRODUCTION/NEXTJS/PROJECTS/IMS/.next/export-marker.json'
+[error] 
+[error] Error: An unexpected error has occurred.

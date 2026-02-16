@@ -365,11 +365,11 @@ export default function Page() {
                     ims
                 </button>
                 <div className="flex gap-2 items-center">
-                    <button onClick={() => { showNotification("Yo", "diddy called", "error") }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
-                        btn 1
+                    <button onClick={() => { showNotification("Title", "test message", "info") }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
+                        noti_test
                     </button>
                     <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
-                        btn 2
+                        func_2
                     </button>
                 </div>
             </nav>
