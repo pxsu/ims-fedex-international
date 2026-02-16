@@ -7,7 +7,7 @@ import { db } from "@/firebase"
 import { Transition } from '@headlessui/react';
 import { PDFDocument } from 'pdf-lib';
 
-import { useInvoiceProcessor } from '@/app/pdfjs/invoiceProcessor';
+import { useInvoiceProcessor } from '@/app/pdfjs/documentProcessor';
 import { convertPdfToImage, downloadBlob } from '@/app/pdfjs/conversionProcessor';
 
 export default function Page() {
@@ -131,10 +131,15 @@ export default function Page() {
 
     // * EXCEL FUNCTIONALITY
     const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
-    const [getExcelTemplate, setExcelTemplate] = useState<any[]>([]);
     const [getExcelModal, setExcelModal] = useState(false);
-    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'exists'>('idle');
-    const [getExtractedExcelData, setExtractedExcelData] = useState<ExtractedData | null>(null);
+    const [getCurrentExcelPage, setCurrentExcelPage] = useState(0);
+    const navigateExcelPage = (direction: 'left' | 'right') => {
+        if (direction === 'left' && getCurrentExcelPage > 0) {
+            setCurrentExcelPage(getCurrentExcelPage - 1);
+        } else if (direction === 'right' && getCurrentExcelPage < getProcessedFileData.length - 1) {
+            setCurrentExcelPage(getCurrentExcelPage + 1);
+        }
+    };
     useEffect(() => {
         if (getExcelModal) {
             document.body.style.overflow = 'hidden';
@@ -156,33 +161,55 @@ export default function Page() {
     const handleExcelDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDraggingExcel(false);
-
-        const files = Array.from(e.dataTransfer.files).filter(f =>
+        const allFiles = Array.from(e.dataTransfer.files);
+        const files = allFiles.filter(f =>
             f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
         );
-
-        if (files && files.length > 0) {
+        if (files.length === 0) {
+            return;
+        } else if (files.length === 1) {
+            handleExcelFiles(files);
+            setExcelModal(true);
+        } else {
             handleExcelFiles(files);
             setExcelModal(true);
         }
     };
+    const [getCurrentProcessingIndex, setCurrentProcessingIndex] = useState(0);
+    const [getProcessedFileData, setProcessedFileData] = useState<any[]>([]);
     const handleExcelFiles = async (files: File[]) => {
-        const allFileData = [];
-        for (const file of files) {
+        /**
+         * TODO: Account for 1 file or an array of files
+         * TODO: variable to store total index count
+         * TODO: state function to store real time index 
+         * TODO: after the end of processing each fileData, we need to replace the value stored in its existing position with the new processed data
+         * TODO: submit an array that either holds 1 index of processed data, versus 2 indexes of processed data
+         */
+        const allFileData: any[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            setCurrentProcessingIndex(i);
             const arrayBuffer = await file.arrayBuffer();
             const base64 = await convertFileToBase64(file);
             const fileData = {
+                index: i,
                 name: file.name,
                 size: file.size,
                 type: file.type,
                 lastModified: file.lastModified,
-                data: base64
+                data: base64,
+                processed: false
             };
             allFileData.push(fileData);
-            await processExcelData(arrayBuffer);
+            const processedResult = await processExcelData(arrayBuffer);
+            allFileData[i] = {
+                ...allFileData[i],
+                processedData: processedResult,
+                processed: true
+            };
+            setProcessedFileData([...allFileData]);
         }
-        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(allFileData));
-        setExcelTemplate(allFileData);
+        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(getProcessedFileData));
     }
     interface ExcelRow {
         __EMPTY?: string;
@@ -208,19 +235,14 @@ export default function Page() {
         costCentre: number | null;
         currency: 'CAD' | 'USD' | null;
     }
-    const processExcelData = async (arrayBuffer: ArrayBuffer): Promise<void> => {
+    const processExcelData = async (arrayBuffer: ArrayBuffer) => {
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(sheet);
-
         const findRow = (text: string) => jsonData.find(row => row.__EMPTY?.includes(text));
-
-        // Extract values
         const vendorRow = findRow('VENDOR/EMP #:');
         const provinceRow = findRow('SELECT PROVINCE');
         const totalRow = jsonData.find(row => row.__EMPTY_3?.toString().trim() === 'Total');
-
-        // Get GL accounts with values (filter out empty AMOUNT fields)
         const relevant_gls = jsonData
             .filter(row => row.__EMPTY_3 && typeof row.__EMPTY_3 === 'number' && row.__EMPTY_5)
             .map(row => ({
@@ -228,10 +250,8 @@ export default function Page() {
                 gl_account: row.__EMPTY_3?.toString() || null,
                 cost_centre: row.__EMPTY_4?.toString() || null,
             }));
-
-        // Determine currency (check which column in Total row has value)
         const currency: 'CAD' | 'USD' | null = totalRow?.__EMPTY_5 ? 'CAD' : 'USD';
-        setExtractedExcelData({
+        return {
             vendorEmpNumber: vendorRow?.__EMPTY_1 ? Number(vendorRow.__EMPTY_1) : null,
             vendorEmpName: vendorRow?.__EMPTY_4?.toString() || null,
             relevant_gls,
@@ -239,29 +259,69 @@ export default function Page() {
             taxValue: provinceRow?.__EMPTY_3?.toString() || null,
             costCentre: provinceRow?.__EMPTY_4 ? Number(provinceRow.__EMPTY_4) : null,
             currency,
-        });
+        };
     };
-    const submitToFirebase = async (data: ExtractedData): Promise<boolean> => {
-        try {
-            setUploadStatus('uploading');
-            const docRef = doc(db, 'vendor_data', `CIA-${data.vendorEmpNumber}`);
-            const docSnap = await getDoc(docRef);
+    const [getSubmissionIndex, setSubmissionIndex] = useState<any[]>([]);
+    const submitToFirebase = async (data: any) => {
+        for (let i = 0; i < data.length; i++) {
+            try {
+                setUploadStatus('uploading');
+                console.log(`trying to submit CIA-${data[i]?.processedData.vendorEmpNumber}`)
+                const docRef = doc(db, 'vendor_data', `CIA-${data[i]?.processedData.vendorEmpNumber}`);
+                const docSnap = await getDoc(docRef);
 
-            if (docSnap.exists()) {
-                setUploadStatus('exists');
-                setTimeout(() => setExcelModal(false), 1500);
-                return false;
+                if (docSnap.exists()) {
+                    setSubmissionIndex(prev => [...prev, { index: i, exists: 1 }]);
+                    setUploadStatus("exists")
+                } else {
+                    setSubmissionIndex(prev => [...prev, { index: i, exists: 0 }]);
+                    await setDoc(docRef, data[i].processedData);
+                    setUploadStatus("success")
+                }
+            } catch (error) {
+                setSubmissionIndex(prev => [...prev, { index: i, exists: -1 }]);
+                setUploadStatus("error")
             }
-
-            await setDoc(docRef, data);
-            setUploadStatus('success');
-            setTimeout(() => setExcelModal(false), 1500);
-            return true;
-        } catch (error) {
-            setUploadStatus('error');
-            setTimeout(() => setExcelModal(false), 1500);
-            return false;
         }
+        setTimeout(() => {
+            setExcelModal(false);
+            setUploadStatus('idle');
+            setSubmissionIndex([]);
+            setCurrentProcessingIndex(0);
+            setProcessedFileData([]);
+        }, 1500);
+    };
+    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'exists'>('idle');
+    const getUploadBtnResponse = () => {
+        const uploadedCount = getSubmissionIndex.filter(item => item.exists === 0).length;
+        const existingCount = getSubmissionIndex.filter(item => item.exists === 1).length;
+        const baseStyles = 'p-1 px-4 rounded-md transition-all';
+
+        if (uploadStatus === 'success' && uploadedCount === 0 && existingCount > 0) {
+            return {
+                className: `${baseStyles} bg-yellow-500 text-white`,
+                text: 'Files already exist'
+            };
+        }
+
+        const statusConfig = {
+            success: {
+                styles: 'bg-green-500 text-white',
+                text: `Uploaded ${uploadedCount} file${uploadedCount !== 1 ? 's' : ''}`
+            },
+            error: { styles: 'bg-red-500 text-white', text: 'Error' },
+            exists: { styles: 'bg-yellow-500 text-white', text: 'File Exists' },
+            uploading: { styles: 'bg-gray-400 text-white cursor-wait', text: 'Uploading...' },
+            idle: {
+                styles: 'bg-black text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 cursor-pointer',
+                text: 'Upload'
+            }
+        };
+        
+        return {
+            className: `${baseStyles} ${statusConfig[uploadStatus].styles}`,
+            text: statusConfig[uploadStatus].text
+        };
     };
 
 
@@ -451,7 +511,7 @@ export default function Page() {
                         onDrop={handleExcelDrop}
                         className={`relative border-2 w-full aspect-square rounded-xl transition-all flex flex-col justify-center items-center gap-4 p-6 border-gray-300 cursor-pointer hover:border-purple-500 hover:bg-purple-50
                         ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
-                        {getExcelTemplate.length > 0 && getExcelModal ? (
+                        {getProcessedFileData.length > 0 && getExcelModal ? (
                             <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-purple-500"></div>
                         ) : (
                             <div className="text-center">
@@ -506,32 +566,42 @@ export default function Page() {
             {getExcelModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white p-8 rounded-xl w-144 min-h-96 max-h-[80vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <div className="flex gap-1 justify-center items-center">
-                                <div>Adding</div>
-                                <span>"{getExcelTemplate[0]?.name.length > 30 ? `${getExcelTemplate[0]?.name.slice(0, 30)}...` : getExcelTemplate[0]?.name}"</span>
-                            </div>
-                            <button
-                                onClick={() => setExcelModal(false)}
-                                className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
-                                <div className="flex px-1 items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                    </svg>
-                                </div>
-                            </button>
-                        </div>
                         <div className="space-y-4">
-                            {getExtractedExcelData && (
+                            {/**
+                             * 🟢 all of the errors here are because we removed 
+                             * getExcelTemplate or whatever. This is wrong as 
+                             * we're processing just one file. We need to change 
+                             * this modal so that it (1) checks to see how many 
+                             * files are in array, (2), displays modal 1 for just one file, 
+                             * and modal 2 for displaying previews of multiple files, 
+                             * and with the click of the cursor being able to switch 
+                             * to any one of them. 
+                             */}
+                            {getProcessedFileData.length === 1 ? (
                                 <div className="space-y-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div className="flex gap-1 justify-center items-center">
+                                            <div>Adding</div>
+                                            <span>"{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.length > 30 ? `${getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.slice(0, 30)}...` : getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}"</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setExcelModal(false)}
+                                            className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
+                                            <div className="flex px-1 items-center gap-1">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                    </div>
                                     <div className="grid grid-cols-2">
                                         <div>
                                             <p className="text-xs text-gray-500">VENDOR NUMBER</p>
-                                            <p className="font-semibold">{getExtractedExcelData.vendorEmpNumber}</p>
+                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpNumber}</p>
                                         </div>
                                         <div>
                                             <p className="text-xs text-gray-500">VENDOR NAME</p>
-                                            <p className="font-semibold">{getExtractedExcelData.vendorEmpName}</p>
+                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}</p>
                                         </div>
                                     </div>
                                     <div>
@@ -545,11 +615,11 @@ export default function Page() {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {getExtractedExcelData.relevant_gls.map((gl, index) => (
+                                                {getProcessedFileData[getCurrentExcelPage]?.processedData?.relevant_gls.map((gl: any, index: number) => (
                                                     <tr key={index}>
-                                                        <td className="border p-2">{gl.description}</td>
-                                                        <td className="border p-2 text-center font-semibold">{gl.gl_account}</td>
-                                                        <td className="border p-2 text-center font-semibold">{gl.cost_centre}</td>
+                                                        <td className="border p-2">{gl.description || null}</td>
+                                                        <td className="border p-2 text-center font-semibold">{gl.gl_account || null}</td>
+                                                        <td className="border p-2 text-center font-semibold">{gl.cost_centre || null}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -567,8 +637,8 @@ export default function Page() {
                                             </thead>
                                             <tbody>
                                                 <tr>
-                                                    <td className="border p-2 font-semibold">{getExtractedExcelData.province}</td>
-                                                    <td className="border p-2">{getExtractedExcelData.taxValue}</td>
+                                                    <td className="border p-2 font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.province}</td>
+                                                    <td className="border p-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue}</td>
                                                     <td className="border p-2 text-gray-400">N/A</td>
                                                 </tr>
                                             </tbody>
@@ -578,33 +648,119 @@ export default function Page() {
                                         <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
                                         <div className="flex gap-4">
                                             <label className="flex items-center gap-2">
-                                                <input type="radio" name="currency" checked={getExtractedExcelData.currency === 'CAD'} readOnly />
+                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'CAD'} readOnly />
                                                 <span>CAD</span>
                                             </label>
                                             <label className="flex items-center gap-2">
-                                                <input type="radio" name="currency" checked={getExtractedExcelData.currency === 'USD'} readOnly />
+                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'USD'} readOnly />
+                                                <span>USD</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div className="flex gap-1 justify-center items-center">
+                                            <div>Adding</div>
+                                            <span>"{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.length > 30 ? `${getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.slice(0, 30)}...` : getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}"</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setExcelModal(false)}
+                                            className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
+                                            <div className="flex px-1 items-center gap-1">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2">
+                                        <div>
+                                            <p className="text-xs text-gray-500">VENDOR NUMBER</p>
+                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpNumber}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-gray-500">VENDOR NAME</p>
+                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-2">GL ACCOUNTS</p>
+                                        <table className="w-full border-collapse text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100">
+                                                    <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
+                                                    <th className="border p-2 text-center">GL ACCOUNT</th>
+                                                    <th className="border p-2 text-center">COST CENTRE</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {getProcessedFileData[getCurrentExcelPage]?.processedData?.relevant_gls.map((gl: any, index: number) => (
+                                                    <tr key={index}>
+                                                        <td className="border p-2">{gl.description || null}</td>
+                                                        <td className="border p-2 text-center font-semibold">{gl.gl_account || null}</td>
+                                                        <td className="border p-2 text-center font-semibold">{gl.cost_centre || null}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-2">PROVINCE & TAX CODES</p>
+                                        <table className="w-full border-collapse text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100">
+                                                    <th className="border p-2 text-left">PROVINCE</th>
+                                                    <th className="border p-2 text-left">TAX 1</th>
+                                                    <th className="border p-2 text-left">TAX 2</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td className="border p-2 font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.province}</td>
+                                                    <td className="border p-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue}</td>
+                                                    <td className="border p-2 text-gray-400">N/A</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2">
+                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'CAD'} readOnly />
+                                                <span>CAD</span>
+                                            </label>
+                                            <label className="flex items-center gap-2">
+                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'USD'} readOnly />
                                                 <span>USD</span>
                                             </label>
                                         </div>
                                     </div>
                                 </div>
                             )}
-                            <div>
+
+                            <div className="flex items-center justify-between">
                                 <button
-                                    onClick={() => { submitToFirebase(getExtractedExcelData!) }}
+                                    onClick={() => { submitToFirebase(getProcessedFileData) }}
                                     disabled={uploadStatus !== 'idle'}
-                                    className={`p-1 px-4 rounded-md transition-all ${uploadStatus === 'success' ? 'bg-green-500 text-white' :
-                                        uploadStatus === 'error' ? 'bg-red-500 text-white' :
-                                            uploadStatus === 'exists' ? 'bg-yellow-500 text-white' :
-                                                uploadStatus === 'uploading' ? 'bg-gray-400 text-white cursor-wait' :
-                                                    'bg-black text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 cursor-pointer'
-                                        }`}>
-                                    {uploadStatus === 'success' ? 'Success' :
-                                        uploadStatus === 'error' ? 'Error' :
-                                            uploadStatus === 'exists' ? 'File Exists' :
-                                                uploadStatus === 'uploading' ? 'Uploading...' :
-                                                    'Upload'}
+                                    className={getUploadBtnResponse().className}>
+                                    {getUploadBtnResponse().text}
                                 </button>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => { navigateExcelPage("left") }}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 9-3 3m0 0 3 3m-3-3h7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                        </svg>
+                                    </button>
+                                    <div>Page {getCurrentExcelPage + 1}</div>
+                                    <button onClick={() => { navigateExcelPage("right") }}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="m12.75 15 3-3m0 0-3-3m3 3h-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
