@@ -1,18 +1,14 @@
-"use client";
+'use client';
 
 import { useState, useRef, useEffect } from "react";
-import { pdfjs } from "react-pdf";
-import { PDFDocument } from 'pdf-lib';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
 import * as XLSX from 'xlsx';
 import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from "@/firebase"
 import { Transition } from '@headlessui/react';
-import { error } from "console";
+import { PDFDocument } from 'pdf-lib';
 
-{/* REQUIREMENT: GLOBAL WORKER */ }
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import { useInvoiceProcessor } from '@/app/pdfjs/invoiceProcessor';
+import { convertPdfToImage, downloadBlob } from '@/app/pdfjs/conversionProcessor';
 
 export default function Page() {
     // * global notification system
@@ -51,6 +47,7 @@ export default function Page() {
     // * TOP BAR FUNCTIONALITY
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -94,6 +91,42 @@ export default function Page() {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
     };
+
+
+    // * CIA SELECTION CODE
+    const { getGptData, processInvoice } = useInvoiceProcessor();
+    const ciaInputRef = useRef<HTMLInputElement>(null);
+    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setCiaTemplate(file);
+        }
+    };
+    // * FILL PDF FIELD
+    const fillPdfField = async () => {
+        if (!getCiaTemplate) return;
+        const arrayBuffer = await getCiaTemplate.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        const form = pdfDoc.getForm();
+        form.getTextField('FIELD_vendorNumber').setText(getGptData?.vendor_number || 'N/A');
+        form.getTextField('FIELD_vendorName').setText(getGptData?.vendor_name || 'N/A');
+        form.getTextField('FIELD_invoiceDate').setText(getGptData?.invoice_date || 'N/A');
+        form.getTextField('FIELD_invoiceNumber').setText(getGptData?.invoice_number || 'N/A');
+        form.getTextField('GL_A1:A1').setText('N/A');
+        form.getTextField('GL_A1:B1').setText('N/A');
+        form.getTextField('GL_A1:C1').setText('N/A');
+        form.getTextField('GL_A1:D1').setText(getGptData?.subtotal || 'N/A');
+        form.getTextField('FIELD_poValue').setText(getGptData?.po_number || 'N/A');
+        form.flatten();
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `filled_${getCiaTemplate.name}`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
 
 
     // * EXCEL FUNCTIONALITY
@@ -241,119 +274,6 @@ export default function Page() {
             reader.onerror = (error) => reject(error);
         });
     }
-
-
-    // * CHATGPT API CALL
-    const [getGptData, setGptData] = useState<any>(null);
-    const processInvoice = async (base64: string) => {
-        // Extract data from PDF
-        const pdfData = atob(base64.split(',')[1]);
-        const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
-        const pages: string[] = [];
-
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            pages.push(content.items.map((item: any) => item.str).join(' '));
-        }
-        // Send to GPT
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [{
-                    role: 'user',
-                    content: `Extract from this invoice text. Return ONLY JSON, no explanation:
-                        {
-                            "vendor_name": "",
-                            "invoice_number": "",
-                            "invoice_date": "",
-                            "po_number": "",
-                            "subtotal": "",
-                        }
-                        Invoice text:
-                    ${pages.join('\n')}`
-                }]
-            })
-        });
-        const data = await res.json();
-        const content = data.choices[0].message.content;
-        const cleanJson = content.replace(/```json\n?|```\n?/g, '').trim();
-        const parsedData = JSON.parse(cleanJson);
-        console.log(parsedData);
-        setGptData(parsedData);
-        return JSON.parse(cleanJson);
-    };
-
-
-    // * FILL PDF FIELD
-    const fillPdfField = async () => {
-        if (!getCiaTemplate) return;
-        const arrayBuffer = await getCiaTemplate.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
-        const form = pdfDoc.getForm();
-        form.getTextField('FIELD_vendorNumber').setText(getGptData?.vendor_number || 'N/A');
-        form.getTextField('FIELD_vendorName').setText(getGptData?.vendor_name || 'N/A');
-        form.getTextField('FIELD_invoiceDate').setText(getGptData?.invoice_date || 'N/A');
-        form.getTextField('FIELD_invoiceNumber').setText(getGptData?.invoice_number || 'N/A');
-        form.getTextField('GL_A1:A1').setText('N/A');
-        form.getTextField('GL_A1:B1').setText('N/A');
-        form.getTextField('GL_A1:C1').setText('N/A');
-        form.getTextField('GL_A1:D1').setText(getGptData?.subtotal || 'N/A');
-        form.getTextField('FIELD_poValue').setText(getGptData?.po_number || 'N/A');
-        form.flatten();
-        const pdfBytes = await pdfDoc.save();
-        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `filled_${getCiaTemplate.name}`;
-        link.click();
-        URL.revokeObjectURL(url);
-    }
-
-
-    // * CONVERT PDF TO IMAGE
-    const convertPdfToImage = async (base64Data: string) => {
-        const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-        const pdfData = atob(base64Data.split(',')[1]);
-        const pdfArray = new Uint8Array(pdfData.length);
-        for (let i = 0; i < pdfData.length; i++) {
-            pdfArray[i] = pdfData.charCodeAt(i);
-        }
-        const pdf = await pdfjsLib.getDocument(pdfArray).promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 2 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-        canvas.toBlob((blob) => {
-            const url = URL.createObjectURL(blob!);
-            const a = document.createElement('a');
-            a.href = url;
-            const originalName = getUploadedFiles[0]?.name.replace('.pdf', '') || 'page';
-            a.download = `${originalName}.jpg`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }, 'image/jpeg');
-    };
-
-
-    // * CIA SELECTION CODE
-    const ciaInputRef = useRef<HTMLInputElement>(null);
-    const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
-    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setCiaTemplate(file);
-        }
-    };
 
 
     return (
