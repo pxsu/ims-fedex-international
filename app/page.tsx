@@ -100,8 +100,7 @@ export default function Page() {
         sessionStorage.removeItem('uploadedFiles');
     };
     // * FILL PDF FIELD
-    const { getGptData, processInvoice } = useInvoiceProcessor(); // getGptData returns an object
-    const [getGlQueue, setGlQueue] = useState<any[]>([]);
+    const { getGptData, processInvoice } = useInvoiceProcessor();
     const getCurrentDate = (): string => {
         const now = new Date();
         const day = now.getDate();
@@ -145,6 +144,39 @@ export default function Page() {
             throw new Error(`Document ${query} not found`);
         }
     }
+    const fillPdfField = async (fieldMap: Map<string, { key: string | number; value: string }>): Promise<Uint8Array> => {
+        const arrayBuffer = await getCiaTemplate.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        const form = pdfDoc.getForm();
+        form.getTextField(String(fieldMap.get('vendor_number')?.key ?? '')).setText(String(fieldMap.get('vendor_number')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('vendor_name')?.key ?? '')).setText(String(fieldMap.get('vendor_name')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('date')?.key ?? '')).setText(String(fieldMap.get('date')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('invoice_number')?.key ?? '')).setText(String(fieldMap.get('invoice_number')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('po_number')?.key ?? '')).setText(String(fieldMap.get('po_number')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('province')?.key ?? '')).setText(String(fieldMap.get('province')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('currency_selection')?.key ?? '')).setText(String(fieldMap.get('currency_selection')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('approval_date')?.key ?? '')).setText(String(fieldMap.get('approval_date')?.value ?? ''));
+        fieldMap.forEach((index, value) => {
+            if (typeof index === 'number') {
+                Object.entries(value).forEach(([id, obj]: [string, any]) => {
+                    //* mental example
+                    const description = id
+                    const value = fieldMap.get(obj)?.key
+                    const field = fieldMap.get(obj)?.value
+                    form.getTextField(String(value)).setText(String(field));
+                });
+            }
+        });
+        form.getTextField(String(fieldMap.get('subtotal')?.key ?? '')).setText(String(fieldMap.get('subtotal')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('taxValue')?.key ?? '')).setText(String(fieldMap.get('taxValue')?.value ?? ''));
+        if (fieldMap.has('secTaxValue')) {
+            form.getTextField(String(fieldMap.get('secTaxValue')?.key ?? '')).setText(String(fieldMap.get('secTaxValue')?.value ?? ''));
+        }
+        form.getTextField(String(fieldMap.get('totalAmount')?.key ?? '')).setText(String(fieldMap.get('totalAmount')?.value ?? ''));
+        form.flatten();
+        const pdfBytes = await pdfDoc.save();
+        return pdfBytes
+    }
     const processDbRequests = async (data: any) => {
         const processedData = [];
         for (const item of data) {
@@ -153,7 +185,6 @@ export default function Page() {
             processInvoice(base64);
             const gptInfo = getGptData;
             const vendorInfo = await phoneBook();
-
             const headerMap = new Map([
                 [
                     'vendor_number',
@@ -215,10 +246,26 @@ export default function Page() {
             vendorInfo.get('relevant_gls').forEach((gl: any, index: number) => {
                 const rowNum = index + 1;
                 glMap.set(index, {
-                    description: { value: gl.description, field: `GL_A${rowNum}:A${rowNum}` },
-                    gl_account: { value: gl.gl_account, field: `GL_A${rowNum}:B${rowNum}` },
-                    cost_centre: { value: gl.cost_centre, field: `GL_A${rowNum}:C${rowNum}` },
-                    amount: { value: '', field: `GL_A${rowNum}:D${rowNum}` }
+                    description:
+                    {
+                        value: gl.description,
+                        field: `GL_A${rowNum}:A${rowNum}`
+                    },
+                    gl_account:
+                    {
+                        value: gl.gl_account,
+                        field: `GL_A${rowNum}:B${rowNum}`
+                    },
+                    cost_centre:
+                    {
+                        value: gl.cost_centre,
+                        field: `GL_A${rowNum}:C${rowNum}`
+                    },
+                    amount:
+                    {
+                        value: '',
+                        field: `GL_A${rowNum}:D${rowNum}`
+                    }
                 });
             });
             const calcMap = new Map([]);
@@ -257,53 +304,39 @@ export default function Page() {
             processedItem.fieldMap = vendorMap;
             processedData.push(processedItem);
         }
-        return processedData;
+        for (const item of processedData) {
+            const pdfData = await fillPdfField(item.fieldMap);
+            setDownloadData(prev => [...prev, pdfData]);
+        }
+        setShowDownloadModal(true);
     }
-    const fillPdfField = async () => {
-        /**
-         * I'm pretty sure it's the same thing around here were we have to create a pre-defined
-         * map of all the values that we'll need before we can go ahead with the rendering side of things.
-         * if anything fillPdfField will come last. Might as well create the same queue functionality
-         * that we used earlier for the excel to db downloader.
-         */
-        /**
-         * TODO: take processedData
-         * TODO: process the data array map and then iterate it through each text field
-         */
+    const [getDownloadData, setDownloadData] = useState<any[]>([]);
+    const [getShowDownloadModal, setShowDownloadModal] = useState(false);
+    const [getCurrentDownloadIndex, setCurrentDownloadIndex] = useState(0);
+    const [getShowProcessModal, setShowProcessModal] = useState(false);
 
-        //* all good
-        const arrayBuffer = await getCiaTemplate.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
-        const form = pdfDoc.getForm();
-
-        //! HEADER */
-        /**
-         * TODO: databasePull(getGptData) --> find most relevant vendor, return valid profile
-         * TODO: iterate through database pull & fill header text
-         */
-        form.getTextField('FIELD_vendorNumber').setText(getGptData?.vendor_number || 'N/A');
-        form.getTextField('FIELD_vendorName').setText(getGptData?.vendor_name || 'N/A');
-        form.getTextField('FIELD_invoiceDate').setText(getGptData?.invoice_date || 'N/A');
-        form.getTextField('FIELD_invoiceNumber').setText(getGptData?.invoice_number || 'N/A');
-
-        //! GL DESCRIPTIONS --> FILL ONLY NECESSARY */
-        form.getTextField('GL_A1:A1').setText('N/A');
-        form.getTextField('GL_A1:B1').setText('N/A');
-        form.getTextField('GL_A1:C1').setText('N/A');
-
-        //! CALCULATION */
-        form.getTextField('GL_A1:D1').setText(getGptData?.subtotal || 'N/A');
-        form.getTextField('FIELD_poValue').setText(getGptData?.po_number || 'N/A');
-        
-        form.flatten();
-        const pdfBytes = await pdfDoc.save();
-        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
+    const downloadFiles = async (files: any[]) => {
+        const mergedPdf = await PDFDocument.create();
+        for (const file of files) {
+            setCurrentDownloadIndex(prev => prev + 1)
+            const pdf = await PDFDocument.load(file);
+            const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            pages.forEach(page => mergedPdf.addPage(page));
+        }
+        const mergedBytes = await mergedPdf.save();
+        const blob = new Blob([new Uint8Array(mergedBytes)], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `filled_${getCiaTemplate.name}`;
-        link.click();
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'merged.pdf';
+        a.click();
         URL.revokeObjectURL(url);
+
+        setTimeout(() => {
+            setDownloadData([]);
+            setCurrentDownloadIndex(0);
+            setShowDownloadModal(false);
+        }, 1500);
     }
 
 
@@ -598,8 +631,6 @@ export default function Page() {
                     Quick actions
                 </section>
                 <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-
-
                     {/* PRIMARY BUTTON */}
                     <div
                         onClick={async () => {
@@ -651,8 +682,6 @@ export default function Page() {
                             className="hidden"
                         />
                     </div>
-
-
                     {/* PDF TO JPEG BUTTON */}
                     <div
                         onClick={async () => {
@@ -668,8 +697,6 @@ export default function Page() {
                             <p className="text-sm text-gray-500 -translate-y-1">convert first page to image</p>
                         </div>
                     </div>
-
-
                     {/* TBD */}
                     <div className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
@@ -680,8 +707,6 @@ export default function Page() {
                             <p className="text-sm text-gray-500 -translate-y-1">blank + support sheet</p>
                         </div>
                     </div>
-
-
                     {/* adding vendors to database */}
                     <div
                         onDragOver={handleExcelDragOver}
@@ -700,8 +725,6 @@ export default function Page() {
                     </div>
                 </section>
             </section>
-
-
             {
                 <div className="pointer-events-none fixed -inset-3 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[9999]">
                     <div className="flex w-full flex-col items-center space-y-2">
@@ -739,6 +762,32 @@ export default function Page() {
                     </div>
                 </div>
             }
+
+
+            {getShowDownloadModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-xl w-144 min-h-96 max-h-[80vh] overflow-y-auto">
+                        <button
+                            onClick={() => setShowDownloadModal(false)}
+                            className="ml-4 text-black cursor-pointer">
+                            <div className="flex items-center gap-2 hover:text-red-200 rounded-md hover:outline-2 hover:outline-red-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                </svg>
+                            </div>
+                        </button>
+                        <div className="space-y-4">
+                            <div className="flex flex-col justify-between">
+                                <div className="flex justify-between items-center">
+                                    <div>{`Download ${getDownloadData.length} files?`}</div>
+                                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer" onClick={() => { downloadFiles(getDownloadData); setShowDownloadModal(true) }}>download</button>
+                                </div>
+                                <div className="">{`${getCurrentDownloadIndex} out of ${getDownloadData.length} processed`}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
 
             {getExcelModal && (
@@ -918,7 +967,6 @@ export default function Page() {
                                     </div>
                                 </div>
                             )}
-
                             <div className="flex items-center justify-between">
                                 <button
                                     onClick={() => { submitToFirebase(getProcessedFileData) }}
