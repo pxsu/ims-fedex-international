@@ -27,7 +27,7 @@ export const useInvoiceProcessor = () => {
                 messages: [{
                     role: 'user',
                     content: `Extract from this invoice text. Return ONLY JSON, no explanation:
-                        { "vendor_name": "", "invoice_number": "", "invoice_date": "", "po_number": "", "subtotal": "" }
+                        { "vendor_name": "", "invoice_number": "", "invoice_date": "", "po_number": "", "subtotal": "", "province", ""}
                         Invoice text: ${pages.join('\n')}`
                 }]
             })

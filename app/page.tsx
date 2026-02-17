@@ -43,6 +43,14 @@ export default function Page() {
         }, 3000);
     };
 
+    // * CIA SELECTION CODE
+    const ciaInputRef = useRef<HTMLInputElement>(null);
+    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setCiaTemplate(file);
+        }
+    };
 
     // * TOP BAR FUNCTIONALITY
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,32 +99,202 @@ export default function Page() {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
     };
-
-
-    // * CIA SELECTION CODE
-    const { getGptData, processInvoice } = useInvoiceProcessor();
-    const ciaInputRef = useRef<HTMLInputElement>(null);
-    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setCiaTemplate(file);
-        }
-    };
     // * FILL PDF FIELD
+    const { getGptData, processInvoice } = useInvoiceProcessor(); // getGptData returns an object
+    const [getGlQueue, setGlQueue] = useState<any[]>([]);
+    const getCurrentDate = (): string => {
+        const now = new Date();
+        const day = now.getDate();
+        const month = now.toLocaleString('en-US', { month: 'short' });
+        return `${day}-${month}`;
+    };
+    const getTaxValue = (vendorInfo: any) => {
+        const province = vendorInfo.province;
+        const taxRates: { [key: string]: { totalRate: number, gstRate: number, gstType: string, pstRate?: number, pstType?: string } } = {
+            'ON': { totalRate: 0.13, gstRate: 0.13, gstType: 'HST-122810' },
+            'QC': { totalRate: 0.14975, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.09975, pstType: 'QST-122900' },
+            'BC': { totalRate: 0.12, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.07, pstType: 'PST-122850' },
+            'AB': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
+            'SK': { totalRate: 0.11, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.06, pstType: 'PST-122850' },
+            'MB': { totalRate: 0.12, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.07, pstType: 'PST-122850' },
+            'NS': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+            'NB': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+            'NL': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+            'PE': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+            'YT': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
+            'NT': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
+            'NU': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' }
+        };
+        return taxRates[province] || { totalRate: 0, gstRate: 0, gstType: 'UNKNOWN' };
+    }
+    const phoneBook = async (): Promise<Map<string, any>> => {
+        const vendor_number = getGptData?.vendor_number;
+        const query = (`CIA-${vendor_number}`);
+        const docRef = doc(db, 'vendor_data', query);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const vendorData = docSnap.data();
+            const vendorMap = new Map();
+            vendorMap.set('vendor_name', vendorData.vendor_name);
+            vendorMap.set('vendor_number', vendorData.vendor_number);
+            vendorMap.set('relevant_gls', vendorData.relevant_gls);
+            vendorMap.set('province', vendorData.province);
+            vendorMap.set('currency', vendorData.currency);
+            return vendorMap;
+        } else {
+            throw new Error(`Document ${query} not found`);
+        }
+    }
+    const processDbRequests = async (data: any) => {
+        const processedData = [];
+        for (const item of data) {
+            const processedItem: any = {};
+            const base64 = await convertFileToBase64(item);
+            processInvoice(base64);
+            const gptInfo = getGptData;
+            const vendorInfo = await phoneBook();
+
+            const headerMap = new Map([
+                [
+                    'vendor_number',
+                    {
+                        value: vendorInfo.get('vendor_number'),
+                        field: 'FIELD_vendorNumber'
+                    }
+                ],
+                [
+                    'vendor_name',
+                    {
+                        value: vendorInfo.get('vendor_name'),
+                        field: 'GL_A1:B1'
+                    }],
+                [
+                    'date',
+                    {
+                        value: gptInfo.invoice_date,
+                        field: 'FIELD_invoiceDate'
+                    }
+                ],
+                [
+                    'invoice_number',
+                    {
+                        value: gptInfo.invoice_number,
+                        field: 'FIELD_invoiceDate'
+                    }
+                ],
+                [
+                    'po_number',
+                    {
+                        value: gptInfo.invoice_number,
+                        field: 'FIELD_poValue'
+                    }
+                ],
+                [
+                    'province',
+                    {
+                        value: gptInfo.invoice_number,
+                        field: 'FIELD_province'
+                    }
+                ],
+                [
+                    'currency_selection',
+                    {
+                        value: vendorInfo.get('currency'),
+                        field: 'FIELD_province'
+                    }
+                ],
+                [
+                    'approval_date',
+                    {
+                        value: getCurrentDate(),
+                        field: 'FIELD_date'
+                    }
+                ],
+            ]);
+            const glMap = new Map();
+            vendorInfo.get('relevant_gls').forEach((gl: any, index: number) => {
+                const rowNum = index + 1;
+                glMap.set(index, {
+                    description: { value: gl.description, field: `GL_A${rowNum}:A${rowNum}` },
+                    gl_account: { value: gl.gl_account, field: `GL_A${rowNum}:B${rowNum}` },
+                    cost_centre: { value: gl.cost_centre, field: `GL_A${rowNum}:C${rowNum}` },
+                    amount: { value: '', field: `GL_A${rowNum}:D${rowNum}` }
+                });
+            });
+            const calcMap = new Map([]);
+            const subtotal = parseFloat(gptInfo.subtotal);
+            calcMap.set('subtotal',
+                {
+                    value: subtotal.toFixed(2),
+                    field: 'FIELD_subtotal'
+                });
+            const taxValue = getTaxValue(vendorInfo);;
+            calcMap.set('taxValue',
+                {
+                    value: (subtotal * taxValue.gstRate).toFixed(2),
+                    field: 'FIELD_primaryTax',
+                    type: taxValue.gstType
+                });
+            if (taxValue.pstRate && taxValue.pstType) {
+                calcMap.set('secTaxValue',
+                    {
+                        value: (subtotal * taxValue.pstRate).toFixed(2),
+                        field: 'FIELD_secondaryTax',
+                        type: taxValue.pstType
+                    });
+            }
+            const totalAmount = subtotal * taxValue.totalRate;
+            calcMap.set('totalAmount',
+                {
+                    value: totalAmount.toFixed(2),
+                    field: 'FIELD_totalValue'
+                });
+            const vendorMap = new Map([
+                ...headerMap,
+                ...glMap,
+                ...calcMap
+            ]);
+            processedItem.fieldMap = vendorMap;
+            processedData.push(processedItem);
+        }
+        return processedData;
+    }
     const fillPdfField = async () => {
-        if (!getCiaTemplate) return;
+        /**
+         * I'm pretty sure it's the same thing around here were we have to create a pre-defined
+         * map of all the values that we'll need before we can go ahead with the rendering side of things.
+         * if anything fillPdfField will come last. Might as well create the same queue functionality
+         * that we used earlier for the excel to db downloader.
+         */
+        /**
+         * TODO: take processedData
+         * TODO: process the data array map and then iterate it through each text field
+         */
+
+        //* all good
         const arrayBuffer = await getCiaTemplate.arrayBuffer();
         const pdfDoc = await PDFDocument.load(arrayBuffer);
         const form = pdfDoc.getForm();
+
+        //! HEADER */
+        /**
+         * TODO: databasePull(getGptData) --> find most relevant vendor, return valid profile
+         * TODO: iterate through database pull & fill header text
+         */
         form.getTextField('FIELD_vendorNumber').setText(getGptData?.vendor_number || 'N/A');
         form.getTextField('FIELD_vendorName').setText(getGptData?.vendor_name || 'N/A');
         form.getTextField('FIELD_invoiceDate').setText(getGptData?.invoice_date || 'N/A');
         form.getTextField('FIELD_invoiceNumber').setText(getGptData?.invoice_number || 'N/A');
+
+        //! GL DESCRIPTIONS --> FILL ONLY NECESSARY */
         form.getTextField('GL_A1:A1').setText('N/A');
         form.getTextField('GL_A1:B1').setText('N/A');
         form.getTextField('GL_A1:C1').setText('N/A');
+
+        //! CALCULATION */
         form.getTextField('GL_A1:D1').setText(getGptData?.subtotal || 'N/A');
         form.getTextField('FIELD_poValue').setText(getGptData?.po_number || 'N/A');
+        
         form.flatten();
         const pdfBytes = await pdfDoc.save();
         const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
@@ -175,6 +353,7 @@ export default function Page() {
             setExcelModal(true);
         }
     };
+    //* leaving this useState variable here so that if I come back and want to add more funcitonality its there
     const [getCurrentProcessingIndex, setCurrentProcessingIndex] = useState(0);
     const [getProcessedFileData, setProcessedFileData] = useState<any[]>([]);
     const handleExcelFiles = async (files: File[]) => {
@@ -226,6 +405,7 @@ export default function Page() {
         gl_account: string | null;
         cost_centre: string | null;
     }
+    //* we don't use this?
     interface ExtractedData {
         vendorEmpNumber: number | null;
         vendorEmpName: string | null;
@@ -266,7 +446,6 @@ export default function Page() {
         for (let i = 0; i < data.length; i++) {
             try {
                 setUploadStatus('uploading');
-                console.log(`trying to submit CIA-${data[i]?.processedData.vendorEmpNumber}`)
                 const docRef = doc(db, 'vendor_data', `CIA-${data[i]?.processedData.vendorEmpNumber}`);
                 const docSnap = await getDoc(docRef);
 
@@ -317,7 +496,7 @@ export default function Page() {
                 text: 'Upload'
             }
         };
-        
+
         return {
             className: `${baseStyles} ${statusConfig[uploadStatus].styles}`,
             text: statusConfig[uploadStatus].text
@@ -424,8 +603,7 @@ export default function Page() {
                     {/* PRIMARY BUTTON */}
                     <div
                         onClick={async () => {
-                            await processInvoice(getUploadedFiles[0]?.data || '');
-                            await fillPdfField();
+                            await processDbRequests(getUploadedFiles);
                         }}
                         className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
