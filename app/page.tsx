@@ -10,7 +10,12 @@ import { PDFDocument } from 'pdf-lib';
 import { useInvoiceProcessor } from '@/app/pdfjs/documentProcessor';
 import { convertPdfToImage, downloadBlob } from '@/app/pdfjs/conversionProcessor';
 
+{/* REQUIREMENT: GLOBAL WORKER */ }
+import { pdfjs } from "react-pdf";
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 export default function Page() {
+
     // * global notification system
     const [getNotifications, setNotifications] = useState<Notification[]>([]);
     type NotificationType = 'success' | 'error' | 'warning' | 'info';
@@ -20,6 +25,7 @@ export default function Page() {
         message?: string;
         type: NotificationType;
     }
+
     const getNotificationStyles = (type: NotificationType) => {
         switch (type) {
             case 'success':
@@ -66,42 +72,141 @@ export default function Page() {
         setIsDragging(false);
     }
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        // * FEATURES: TYPE VALIDATION -- SIZE LIMIT GAURD -- REHYDRATION
         e.preventDefault();
         setIsDragging(false);
         const files = e.dataTransfer.files;
+        // * (1) PROCESSOR
         if (files && files.length > 0) {
-            showNotification("System", "Added a file", "success")
-            handleFiles(files);
+            const MAX_SIZE_MB = 10;
+            const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+            try {
+                const filesArray = Array.from(files);
+                const invalidFile = filesArray.find(f => f.type !== 'application/pdf') ?? filesArray.find(f => f.size > MAX_SIZE_BYTES);
+                if (invalidFile) {
+                    const message = invalidFile.type !== 'application/pdf' ? `${invalidFile.name} is not a PDF` : `${invalidFile.name} exceeds ${MAX_SIZE_MB}MB limit`;
+                    showNotification("Error", message, "error");
+                } else {
+                    Array.from(files).map(async (file) => {
+                        const index = await renderSkeleton(file);
+                        try {
+                            await handleFiles(file, index)
+                        } catch (err) {
+                            showNotification("Error", `Could not render ${files.length} file${files.length > 1 ? 's' : ''}`, "info");
+                        }
+                    })
+                }
+
+            } catch (err) {
+                showNotification("Error", "Something went wrong uploading your files", "error");
+            }
         }
     }
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (files && files.length > 0) {
-            handleFiles(files);
+    const renderSkeleton = async (file: File) => {
+        const skeleton = {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified,
+            state: "skeleton"
+        };
+        const index = getUploadedFiles.length;
+        setUploadedFiles(prev => [...prev, skeleton]);
+        return index;
+    }
+    const handleFiles = async (file: File, index: number) => {
+        const base64 = await convertFileToBase64(file);
+        let processedData;
+        try {
+            processedData = await processDbRequests(base64);
+        } catch (err) {
+            console.log(err);
         }
-    };
-    const handleFiles = async (files: FileList) => {
-        const fileDataArray = await Promise.all(
-            Array.from(files).map(async (file) => {
-                const base64 = await convertFileToBase64(file);
-                return {
-                    name: file.name,
-                    size: file.size,
-                    type: file.type,
-                    lastModified: file.lastModified,
-                    data: base64
-                };
+        const fileData = {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified,
+            state: "file_object",
+            unProcessedData: base64,
+            processedData
+        };
+        setUploadedFiles(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], ...fileData };
+            sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
+            return updated;
+        });
+    }
+    const processInvoice = async (base64: string) => {
+        console.log(`BASE64 DATA: ${base64}`)
+        const pdfData = atob(base64.split(',')[1]);
+        const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
+        const pages: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            pages.push(content.items.map((item: any) => item.str).join(' '));
+        }
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [{
+                    role: 'user',
+                    content:
+                        `Extract from this invoice text. Return ONLY JSON, no explanation:
+                        { 
+                            "vendor_name": "", 
+                            "invoice_number": "", 
+                            "invoice_date": "", 
+                            "po_number": "", 
+                            "subtotal": "", 
+                            "province", ""
+                        }
+                        Invoice text: ${pages.join('\n')}`
+                }]
             })
-        );
-        sessionStorage.setItem('uploadedFiles', JSON.stringify(fileDataArray));
-        setUploadedFiles(prev => [...prev, ...fileDataArray]);
+        });
+        const data = await res.json();
+        const cleanJson = data.choices[0].message.content.replace(/```json\n?|```\n?/g, '').trim();
+        const parsedData = JSON.parse(cleanJson);
+        return parsedData;
+    };
+    const processDbRequests = async (data: any) => {
+        const processedInvoiceMap = new Map<string, any>();
+        let gptInfo;
+        try {
+            gptInfo = await processInvoice(data);
+            processedInvoiceMap.set("vendor_name", gptInfo.vendor_name || "missing");
+            processedInvoiceMap.set("invoice_number", gptInfo.invoice_number || "missing");
+            processedInvoiceMap.set("invoice_date", gptInfo.invoice_date || "missing");
+            processedInvoiceMap.set("po_number", gptInfo.po_number || "missing");
+            processedInvoiceMap.set("subtotal", gptInfo.subtotal || "missing");
+            processedInvoiceMap.set("province", gptInfo.province || "missing");
+            return processedInvoiceMap;
+        } catch (err) {
+            showNotification("System", `Could not process file`, "info");
+            throw err;
+        }
     }
     const clearUploadedFiles = () => {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
     };
+    useEffect(() => {
+        const saved = sessionStorage.getItem('uploadedFiles');
+        if (saved) {
+            setUploadedFiles(JSON.parse(saved));
+        }
+    }, []);
+    const [getCanvasState, setCanvasState] = useState<'idle' | 'loading'>('idle');
+
     // * FILL PDF FIELD
-    const { getGptData, processInvoice } = useInvoiceProcessor();
     const getCurrentDate = (): string => {
         const now = new Date();
         const day = now.getDate();
@@ -178,137 +283,8 @@ export default function Page() {
         const pdfBytes = await pdfDoc.save();
         return pdfBytes
     }
-    const processDbRequests = async (data: any) => {
-        const processedData = [];
-        for (const item of data) {
-            const processedItem: any = {};
-            processInvoice(item.data);
-            const gptInfo = getGptData;
-            const vendorInfo = await phoneBook();
-            const headerMap = new Map([
-                [
-                    'vendor_number',
-                    {
-                        value: vendorInfo.get('vendor_number'),
-                        field: 'FIELD_vendorNumber'
-                    }
-                ],
-                [
-                    'vendor_name',
-                    {
-                        value: vendorInfo.get('vendor_name'),
-                        field: 'GL_A1:B1'
-                    }],
-                [
-                    'date',
-                    {
-                        value: gptInfo.invoice_date || "null",
-                        field: 'FIELD_invoiceDate'
-                    }
-                ],
-                [
-                    'invoice_number',
-                    {
-                        value: gptInfo.invoice_number || "null",
-                        field: 'FIELD_invoiceDate'
-                    }
-                ],
-                [
-                    'po_number',
-                    {
-                        value: gptInfo.invoice_number || "null",
-                        field: 'FIELD_poValue'
-                    }
-                ],
-                [
-                    'province',
-                    {
-                        value: gptInfo.invoice_number || "null",
-                        field: 'FIELD_province'
-                    }
-                ],
-                [
-                    'currency_selection',
-                    {
-                        value: vendorInfo.get('currency'),
-                        field: 'FIELD_province'
-                    }
-                ],
-                [
-                    'approval_date',
-                    {
-                        value: getCurrentDate(),
-                        field: 'FIELD_date'
-                    }
-                ],
-            ]);
-            const glMap = new Map();
-            vendorInfo.get('relevant_gls').forEach((gl: any, index: number) => {
-                const rowNum = index + 1;
-                glMap.set(index, {
-                    description:
-                    {
-                        value: gl.description,
-                        field: `GL_A${rowNum}:A${rowNum}`
-                    },
-                    gl_account:
-                    {
-                        value: gl.gl_account,
-                        field: `GL_A${rowNum}:B${rowNum}`
-                    },
-                    cost_centre:
-                    {
-                        value: gl.cost_centre,
-                        field: `GL_A${rowNum}:C${rowNum}`
-                    },
-                    amount:
-                    {
-                        value: '',
-                        field: `GL_A${rowNum}:D${rowNum}`
-                    }
-                });
-            });
-            const calcMap = new Map([]);
-            const subtotal = parseFloat(gptInfo.subtotal || 1000);
-            calcMap.set('subtotal',
-                {
-                    value: subtotal.toFixed(2),
-                    field: 'FIELD_subtotal'
-                });
-            const taxValue = getTaxValue(vendorInfo);;
-            calcMap.set('taxValue',
-                {
-                    value: (subtotal * taxValue.gstRate).toFixed(2),
-                    field: 'FIELD_primaryTax',
-                    type: taxValue.gstType
-                });
-            if (taxValue.pstRate && taxValue.pstType) {
-                calcMap.set('secTaxValue',
-                    {
-                        value: (subtotal * taxValue.pstRate).toFixed(2),
-                        field: 'FIELD_secondaryTax',
-                        type: taxValue.pstType
-                    });
-            }
-            const totalAmount = subtotal * taxValue.totalRate;
-            calcMap.set('totalAmount',
-                {
-                    value: totalAmount.toFixed(2),
-                    field: 'FIELD_totalValue'
-                });
-            const vendorMap = new Map([
-                ...headerMap,
-                ...glMap,
-                ...calcMap
-            ]);
-            processedItem.fieldMap = vendorMap;
-            processedData.push(processedItem);
-        }
-        for (const item of processedData) {
-            const pdfData = await fillPdfField(item.fieldMap);
-            setDownloadData(prev => [...prev, pdfData]);
-        }
-        setShowDownloadModal(true);
+    const downloadQueue = async (data: any) => {
+        console.log("last step not done")
     }
     const [getDownloadData, setDownloadData] = useState<any[]>([]);
     const [getShowDownloadModal, setShowDownloadModal] = useState(false);
@@ -548,13 +524,21 @@ export default function Page() {
     }
 
 
-    // * DOWNLOAD GATES
-    const [getDownloadGate, setDownloadGate] = useState(false);
+    // * CONSOLE COMMANDS
+    const runTest = async (data: any) => {
+        console.log(data[0].data)
+    }
+    useEffect(() => {
+        (window as any).dev = {
+            setCanvasStateLoading: () => setCanvasState('loading'),
+            setCanvasStateIdle: () => setCanvasState('idle'),
+        };
+    }, [getCanvasState]);
 
 
     return (
         <main data-section="whole page" className="bg-white text-black h-screen flex flex-col">
-            
+
             <nav className="flex gap-2 justify-between bg-neutral-100 p-2 px-8 items-center h-14">
                 <button
                     onClick={() => window.location.href = '/'}
@@ -562,12 +546,10 @@ export default function Page() {
                     ims
                 </button>
                 <div className="flex gap-2 items-center">
-                    <button onClick={() => { showNotification("Title", "test message", "info") }} className="bg-black hidden p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
-                        btn
-                    </button>
+                    <button onClick={() => { runTest(getUploadedFiles) }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">runTest</button>
                 </div>
             </nav>
-            
+
             <section
                 data-section="drag and drop area"
                 onDragOver={handleDragOver}
@@ -576,57 +558,58 @@ export default function Page() {
                 className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-gray-200'}`}>
                 <div className="flex flex-col justify-between h-full w-full">
                     <div className="flex justify-center items-center gap-2 h-full">
-                        <div
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-6 py-3 rounded-lg flex items-center gap-2 flex flex-col">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={0.5} stroke="currentColor" className="w-32 h-32">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                            </svg>
-                            <span>Add files</span>
+                        <div className="px-6 py-3 rounded-lg flex items-center gap-2 flex flex-col">
+                            {getCanvasState === 'idle' ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={0.5} stroke="currentColor" className="w-32 h-32">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                </svg>
+                            ) : (
+                                <div className="animate-spin rounded-full w-32 h-32 border-[3px] border-gray-200 border-t-indigo-400" />
+                            )}
                         </div>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".pdf"
-                            onChange={handleFileSelect}
-                            className="hidden"
-                        />
                     </div>
                     <div className="flex justify-center items-center text-green-600 w-full p-4">
                         <div className="flex gap-4 w-3/4 mx-auto overflow-x-auto overflow-y-hidden p-4">
                             {getUploadedFiles.map((file, index) => {
                                 const bytes = file.size || 0;
-                                const size = bytes < 1024 ? `${bytes} B`
-                                    : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
-                                        : bytes < 1024 * 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-                                            : `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-                                return (
-                                    <div
-                                        className="bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 min-w-40 h-52 shrink-0"
-                                        key={index}>
-                                        <div className="flex-1 flex items-center justify-center">
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-14 h-14 text-gray-400">
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                            </svg>
-                                        </div>
-                                        <div className="flex flex-col items-left w-full">
-                                            <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.name}</span>
-                                            <div className="flex gap-1">
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                                </svg>
-                                                <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                const size = bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+                                if (file.state === "skeleton") {
+                                    return (
+                                        <div className="bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden hover:outline-2 hover:outline-indigo-400 cursor-pointer" key={index}>
+                                            <div className="animate-spin rounded-full w-32 h-32 border-[3px] border-gray-200 border-t-indigo-400" />
+                                            <div className="flex flex-col items-left w-full gap-1">
+                                                <div className="text-gray-400 text-[10px] sm:text-xs md:text-sm animate-pulse w-full bg-neutral-200 h-5 rounded"></div>
+                                                <div className="text-gray-400 text-[10px] sm:text-xs md:text-sm animate-pulse w-full bg-neutral-200 h-5 rounded"></div>
                                             </div>
                                         </div>
-                                    </div>
-                                );
+                                    );
+                                } else {
+                                    return (
+                                        <div className="bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden hover:outline-2 hover:outline-indigo-400 cursor-pointer" key={index}>
+                                            <div className="flex-1 flex items-center justify-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-14 h-14 text-gray-400">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                </svg>
+                                            </div>
+                                            <div className="flex flex-col items-left w-full">
+                                                <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.processedData.get("vendor_name")}</span>
+                                                <div className="flex gap-1">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                    </svg>
+                                                    <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
                             })}
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section data-section="fun buttons" className="p-8 flex-1">
+            <section data-section="file queue array" className="p-8 flex-1">
                 <div className="flex-1 flex items-center justify-center -translate-y-6 text-black/40 gap-2">
                     <span>{`${getUploadedFiles.length} files added`}</span>
                     <span>|</span>
@@ -640,11 +623,11 @@ export default function Page() {
                 </div>
                 <div className="flex justify-between">
                     <button className="bg-black p-3 px-6 rounded-xl cursor-pointer text-white hover:text-black hover:bg-transparent hover:outline-2 hover:outline-black">PDF to Image</button>
-                    {getDownloadGate ? (
-                        <button disabled className="bg-indigo-500 p-3 px-6 text-white rounded-xl cursor-pointer hover:text-indigo-500 hover:bg-transparent hover:outline-2 hover:outline-indigo-500">download</button>
-                    ) :
-                        <button disabled className="bg-indigo-200 p-3 px-6 text-white rounded-xl cursor-not-allowed opacity-50">download</button>
-                    }
+                    {getUploadedFiles.length > 0 ? (
+                        <button onClick={() => downloadQueue(getUploadedFiles)} className="bg-indigo-500 p-3 px-6 text-white rounded-xl cursor-pointer hover:text-indigo-500 hover:bg-transparent hover:outline-2 hover:outline-indigo-500">Download</button>
+                    ) : (
+                        <button disabled className="bg-indigo-200 p-3 px-6 text-white rounded-xl cursor-not-allowed opacity-50">Download</button>
+                    )}
                 </div>
             </section>
 
