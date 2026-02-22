@@ -23,15 +23,15 @@ export default function Page() {
     const getNotificationStyles = (type: NotificationType) => {
         switch (type) {
             case 'success':
-                return 'bg-green-400 border-2 border-green-300';
+                return 'bg-green-400 border-2 border-black';
             case 'error':
-                return 'bg-red-400 border-2 border-red-300';
+                return 'bg-red-400 border-2 border-black';
             case 'warning':
-                return 'bg-yellow-400 border-2 border-yellow-300';
+                return 'bg-orange-300 border-2 border-black ';
             case 'info':
-                return 'bg-neutral-400 border-2 border-neutral-300';
+                return 'bg-black/40 border-2 border-black';
             default:
-                return 'bg-black border-2 border-gray-800';
+                return 'bg-black/40 border-2 border-black';
         }
     };
     const showNotification = (title: string, message?: string, type: NotificationType = 'success') => {
@@ -70,6 +70,7 @@ export default function Page() {
         setIsDragging(false);
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
+            showNotification("System", "Added a file", "success")
             handleFiles(files);
         }
     }
@@ -93,7 +94,7 @@ export default function Page() {
             })
         );
         sessionStorage.setItem('uploadedFiles', JSON.stringify(fileDataArray));
-        setUploadedFiles(fileDataArray);
+        setUploadedFiles(prev => [...prev, ...fileDataArray]);
     }
     const clearUploadedFiles = () => {
         setUploadedFiles([]);
@@ -181,8 +182,7 @@ export default function Page() {
         const processedData = [];
         for (const item of data) {
             const processedItem: any = {};
-            const base64 = await convertFileToBase64(item);
-            processInvoice(base64);
+            processInvoice(item.data);
             const gptInfo = getGptData;
             const vendorInfo = await phoneBook();
             const headerMap = new Map([
@@ -202,28 +202,28 @@ export default function Page() {
                 [
                     'date',
                     {
-                        value: gptInfo.invoice_date,
+                        value: gptInfo.invoice_date || "null",
                         field: 'FIELD_invoiceDate'
                     }
                 ],
                 [
                     'invoice_number',
                     {
-                        value: gptInfo.invoice_number,
+                        value: gptInfo.invoice_number || "null",
                         field: 'FIELD_invoiceDate'
                     }
                 ],
                 [
                     'po_number',
                     {
-                        value: gptInfo.invoice_number,
+                        value: gptInfo.invoice_number || "null",
                         field: 'FIELD_poValue'
                     }
                 ],
                 [
                     'province',
                     {
-                        value: gptInfo.invoice_number,
+                        value: gptInfo.invoice_number || "null",
                         field: 'FIELD_province'
                     }
                 ],
@@ -269,7 +269,7 @@ export default function Page() {
                 });
             });
             const calcMap = new Map([]);
-            const subtotal = parseFloat(gptInfo.subtotal);
+            const subtotal = parseFloat(gptInfo.subtotal || 1000);
             calcMap.set('subtotal',
                 {
                     value: subtotal.toFixed(2),
@@ -548,183 +548,106 @@ export default function Page() {
     }
 
 
+    // * DOWNLOAD GATES
+    const [getDownloadGate, setDownloadGate] = useState(false);
+
+
     return (
-        <main data-section="whole page" className="bg-white text-black h-screen">
+        <main data-section="whole page" className="bg-white text-black h-screen flex flex-col">
+            
             <nav className="flex gap-2 justify-between bg-neutral-100 p-2 px-8 items-center h-14">
                 <button
                     onClick={() => window.location.href = '/'}
-                    className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(168_85_247)] transition-all cursor-pointer">
+                    className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(51.1_0.262_276.96)] transition-all cursor-pointer">
                     ims
                 </button>
                 <div className="flex gap-2 items-center">
-                    <button onClick={() => { showNotification("Title", "test message", "info") }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
-                        noti_test
-                    </button>
-                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
-                        func_2
+                    <button onClick={() => { showNotification("Title", "test message", "info") }} className="bg-black hidden p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">
+                        btn
                     </button>
                 </div>
             </nav>
-
-
+            
             <section
                 data-section="drag and drop area"
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`flex justify-center items-center h-1/3 transition-all border-y-2 border-gray-100 ${isDragging ? 'border-purple-500 bg-purple-50' : 'bg-gray-50'}`}>
-                {getUploadedFiles.length > 0 ? (
-                    <>
-                        <div className="relative flex h-full w-full items-center justify-center">
-                            <div className="flex gap-2 justify-center items-center text-green-600">
-                                <span>
-                                    {(() => {
-                                        const bytes = getUploadedFiles[0]?.size || 0;
-                                        if (bytes < 1024) return `${bytes} B`;
-                                        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-                                        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-                                        return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-                                    })()}
-                                </span>
-                                <span>{getUploadedFiles[0]?.name}</span>
-                            </div>
-                            <div className="absolute bottom-0 w-full flex gap-3 items-center justify-center p-4">
-                                <button
-                                    onClick={clearUploadedFiles}
-                                    className="bg-red-500 p-1 rounded-md text-white hover:bg-white hover:text-red-500 hover:border-2 hover:border-red-500 transition-all cursor-pointer">
-                                    <div className="flex px-1 items-center gap-1">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                        </svg>
-                                        <span className="text-xs">clear</span>
-                                    </div>
-                                </button>
-                            </div>
+                className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-gray-200'}`}>
+                <div className="flex flex-col justify-between h-full w-full">
+                    <div className="flex justify-center items-center gap-2 h-full">
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-6 py-3 rounded-lg flex items-center gap-2 flex flex-col">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={0.5} stroke="currentColor" className="w-32 h-32">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                            </svg>
+                            <span>Add files</span>
                         </div>
-                    </>
-                ) : (
-                    <>
-                        <div className="flex gap-2">
-                            <span
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-4 py-2 rounded-lg cursor-pointer text-gray-600 hover:text-purple-600 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                </svg>
-                                select pdf
-                            </span>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".pdf"
-                                onChange={handleFileSelect}
-                                className="hidden"
-                            />
-                        </div>
-                    </>
-                )}
-            </section>
-
-
-            <section data-section="fun buttons" className="p-8 h-full bg-neutral-100">
-                <section className="py-2 text-black/60">
-                    Quick actions
-                </section>
-                <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                    {/* PRIMARY BUTTON */}
-                    <div
-                        onClick={async () => {
-                            await processDbRequests(getUploadedFiles);
-                        }}
-                        className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                        </svg>
-                        <div className="text-center">
-                            <h3 className="font-semibold text-gray-700">Auto generate cover sheet</h3>
-                            <p className="text-sm text-gray-500 -translate-y-1">upload CIA template to begin</p>
-                        </div>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                ciaInputRef.current?.click();
-                            }}
-                            className="absolute bottom-4 px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer">
-                            {getCiaTemplate ? (
-                                <>
-                                    <div className="flex text-green-600 gap-1">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                        </svg>
-                                        <span className="text-sm">
-                                            {getCiaTemplate.name.length > 15
-                                                ? `${getCiaTemplate.name.slice(0, 15)}...`
-                                                : getCiaTemplate.name}
-                                        </span>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="hover:text-purple-600 flex gap-1">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                        </svg>
-                                        <span className="text-sm">set cia template</span>
-                                    </div>
-                                </>
-                            )}
-                        </button>
                         <input
-                            ref={ciaInputRef}
+                            ref={fileInputRef}
                             type="file"
                             accept=".pdf"
-                            onChange={handleCiaFileSelect}
+                            onChange={handleFileSelect}
                             className="hidden"
                         />
                     </div>
-                    {/* PDF TO JPEG BUTTON */}
-                    <div
-                        onClick={async () => {
-                            const pdfData = getUploadedFiles[0]?.data || '';
-                            if (pdfData) await convertPdfToImage(pdfData);
-                        }}
-                        className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                        </svg>
-                        <div className="text-center">
-                            <h3 className="font-semibold text-gray-700">PDF to JPEG</h3>
-                            <p className="text-sm text-gray-500 -translate-y-1">convert first page to image</p>
+                    <div className="flex justify-center items-center text-green-600 w-full p-4">
+                        <div className="flex gap-4 w-3/4 mx-auto overflow-x-auto overflow-y-hidden p-4">
+                            {getUploadedFiles.map((file, index) => {
+                                const bytes = file.size || 0;
+                                const size = bytes < 1024 ? `${bytes} B`
+                                    : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
+                                        : bytes < 1024 * 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+                                            : `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+                                return (
+                                    <div
+                                        className="bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 min-w-40 h-52 shrink-0"
+                                        key={index}>
+                                        <div className="flex-1 flex items-center justify-center">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-14 h-14 text-gray-400">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                            </svg>
+                                        </div>
+                                        <div className="flex flex-col items-left w-full">
+                                            <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.name}</span>
+                                            <div className="flex gap-1">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                </svg>
+                                                <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
-                    {/* TBD */}
-                    <div className="relative border-2 border-gray-300 w-full aspect-square rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer flex flex-col justify-center items-center gap-4 p-6">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        <div className="text-center">
-                            <h3 className="font-semibold text-gray-700">Add supporting sheets</h3>
-                            <p className="text-sm text-gray-500 -translate-y-1">blank + support sheet</p>
-                        </div>
-                    </div>
-                    {/* adding vendors to database */}
-                    <div
-                        onDragOver={handleExcelDragOver}
-                        onDragLeave={handleExcelDragLeave}
-                        onDrop={handleExcelDrop}
-                        className={`relative border-2 w-full aspect-square rounded-xl transition-all flex flex-col justify-center items-center gap-4 p-6 border-gray-300 cursor-pointer hover:border-purple-500 hover:bg-purple-50
-                        ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50' : ''}`}>
-                        {getProcessedFileData.length > 0 && getExcelModal ? (
-                            <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-purple-500"></div>
-                        ) : (
-                            <div className="text-center">
-                                <h3 className="font-semibold text-gray-700">EXCEL to FIRESTORE</h3>
-                                <p className="text-sm text-gray-500 -translate-y-1">drag & drop excel file</p>
-                            </div>
-                        )}
-                    </div>
-                </section>
+                </div>
             </section>
+
+            <section data-section="fun buttons" className="p-8 flex-1">
+                <div className="flex-1 flex items-center justify-center -translate-y-6 text-black/40 gap-2">
+                    <span>{`${getUploadedFiles.length} files added`}</span>
+                    <span>|</span>
+                    <button
+                        onClick={clearUploadedFiles}
+                        className="text-black/40 cursor-pointer">
+                        <div className="flex items-center hover:text-red-400">
+                            <span>clear</span>
+                        </div>
+                    </button>
+                </div>
+                <div className="flex justify-between">
+                    <button className="bg-black p-3 px-6 rounded-xl cursor-pointer text-white hover:text-black hover:bg-transparent hover:outline-2 hover:outline-black">PDF to Image</button>
+                    {getDownloadGate ? (
+                        <button disabled className="bg-indigo-500 p-3 px-6 text-white rounded-xl cursor-pointer hover:text-indigo-500 hover:bg-transparent hover:outline-2 hover:outline-indigo-500">download</button>
+                    ) :
+                        <button disabled className="bg-indigo-200 p-3 px-6 text-white rounded-xl cursor-not-allowed opacity-50">download</button>
+                    }
+                </div>
+            </section>
+
             {
                 <div className="pointer-events-none fixed -inset-3 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[9999]">
                     <div className="flex w-full flex-col items-center space-y-2">
@@ -766,24 +689,27 @@ export default function Page() {
 
             {getShowDownloadModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white p-8 rounded-xl w-144 min-h-96 max-h-[80vh] overflow-y-auto">
-                        <button
-                            onClick={() => setShowDownloadModal(false)}
-                            className="ml-4 text-black cursor-pointer">
-                            <div className="flex items-center gap-2 hover:text-red-200 rounded-md hover:outline-2 hover:outline-red-200">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                    <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">
+                                <svg
+                                    onClick={() => setShowDownloadModal(false)}
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-6 h-6">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                                 </svg>
                             </div>
-                        </button>
-                        <div className="space-y-4">
-                            <div className="flex flex-col justify-between">
-                                <div className="flex justify-between items-center">
-                                    <div>{`Download ${getDownloadData.length} files?`}</div>
-                                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer" onClick={() => { downloadFiles(getDownloadData); setShowDownloadModal(true) }}>download</button>
-                                </div>
-                                <div className="">{`${getCurrentDownloadIndex} out of ${getDownloadData.length} processed`}</div>
+                            <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:outline-2 hover:outline-purple-500 transition-all cursor-pointer" onClick={() => { downloadFiles(getDownloadData); setShowDownloadModal(true) }}>download</button>
+                        </div>
+                        <div className="flex flex-1 flex-col justify-center">
+                            <div className="flex justify-center items-center">
+                                <div>{`Download ${getDownloadData.length} files?`}</div>
                             </div>
+                            <div className="flex justify-center items-center">{`${getCurrentDownloadIndex} out of ${getDownloadData.length} processed`}</div>
                         </div>
                     </div>
                 </div>
