@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from "react";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import * as XLSX from 'xlsx';
 import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from "@/firebase"
@@ -91,12 +92,12 @@ export default function Page() {
                         const index = await renderSkeleton(file);
                         try {
                             await handleFiles(file, index)
+                            await renderCoverSheet(index)
                         } catch (err) {
                             showNotification("Error", `Could not render ${files.length} file${files.length > 1 ? 's' : ''}`, "info");
                         }
                     })
                 }
-
             } catch (err) {
                 showNotification("Error", "Something went wrong uploading your files", "error");
             }
@@ -129,7 +130,7 @@ export default function Page() {
             lastModified: file.lastModified,
             state: "file_object",
             unProcessedData: base64,
-            processedData
+            processedData: Object.fromEntries(processedData as Map<string, any>)
         };
         setUploadedFiles(prev => {
             const updated = [...prev];
@@ -137,6 +138,88 @@ export default function Page() {
             sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
             return updated;
         });
+    }
+    const renderCoverSheet = async (index: number) => {
+        // * INPUT: index number to add new variable holding pdf base64 data
+        // * OUTPUT: coverSheetData: base64
+
+        let vendorData;
+        const inputData = new Map();
+        try {
+            // TODO: get the appropriate vendor data
+            try {
+                // TODO: const searchName = smartQuery(getUploadedFiles[index])
+                await smartQuery(getUploadedFiles[index].processedData["vendor_name"])
+            } catch (err) {
+                console.log(err);
+            }
+        } catch (err) {
+            console.log(err);
+        }
+
+        // TODO: const coverSheetData = newPdf(inputData);
+        const fileData = {
+            // TODO: coverSheetData: coverSheetData
+        }
+        setUploadedFiles(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], ...fileData };
+            sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
+            return updated;
+        })
+    }
+    const runTest = async (data: any) => {
+        console.log(`Now searching for ${data.processedData["vendor_name"]}`)
+        smartQuery(data.processedData["vendor_name"]);
+    }
+    const smartQuery = async (inputQuery: string) => {
+        console.log("i work")
+        
+        const question = query(collection(db, "vendor_data"), where("vendorEmpName", "==", inputQuery));
+        console.log(question)
+
+        const snapshot = await getDocs(question);
+
+        snapshot.forEach((doc) => {
+            console.log('hi')
+            console.log(doc.id, doc.data());
+        });
+    }
+    const newPdf = () => {
+        null
+    }
+    const fillPdfField = async (fieldMap: Map<string, { key: string | number; value: string }>): Promise<Uint8Array> => {
+        const arrayBuffer = await getCiaTemplate.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        const form = pdfDoc.getForm();
+        form.getTextField(String(fieldMap.get('vendor_number')?.key ?? '')).setText(String(fieldMap.get('vendor_number')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('vendor_name')?.key ?? '')).setText(String(fieldMap.get('vendor_name')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('date')?.key ?? '')).setText(String(fieldMap.get('date')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('invoice_number')?.key ?? '')).setText(String(fieldMap.get('invoice_number')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('po_number')?.key ?? '')).setText(String(fieldMap.get('po_number')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('province')?.key ?? '')).setText(String(fieldMap.get('province')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('currency_selection')?.key ?? '')).setText(String(fieldMap.get('currency_selection')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('approval_date')?.key ?? '')).setText(String(fieldMap.get('approval_date')?.value ?? ''));
+        fieldMap.forEach((index, value) => {
+            if (typeof index === 'number') {
+                Object.entries(value).forEach(([id, obj]: [string, any]) => {
+                    //* mental example
+                    const description = id
+                    const value = fieldMap.get(obj)?.key
+                    const field = fieldMap.get(obj)?.value
+                    form.getTextField(String(value)).setText(String(field));
+                });
+            }
+        });
+        form.getTextField(String(fieldMap.get('subtotal')?.key ?? '')).setText(String(fieldMap.get('subtotal')?.value ?? ''));
+        form.getTextField(String(fieldMap.get('taxValue')?.key ?? '')).setText(String(fieldMap.get('taxValue')?.value ?? ''));
+        if (fieldMap.has('secTaxValue')) {
+            form.getTextField(String(fieldMap.get('secTaxValue')?.key ?? '')).setText(String(fieldMap.get('secTaxValue')?.value ?? ''));
+        }
+        form.getTextField(String(fieldMap.get('totalAmount')?.key ?? '')).setText(String(fieldMap.get('totalAmount')?.value ?? ''));
+        form.flatten();
+        const pdfBytes = await pdfDoc.save();
+        return pdfBytes
     }
     const processInvoice = async (base64: string) => {
         console.log(`BASE64 DATA: ${base64}`)
@@ -194,6 +277,9 @@ export default function Page() {
             throw err;
         }
     }
+    const downloadQueue = (queue: any[]) => {
+        null
+    }
     const clearUploadedFiles = () => {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
@@ -249,42 +335,6 @@ export default function Page() {
         } else {
             throw new Error(`Document ${query} not found`);
         }
-    }
-    const fillPdfField = async (fieldMap: Map<string, { key: string | number; value: string }>): Promise<Uint8Array> => {
-        const arrayBuffer = await getCiaTemplate.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
-        const form = pdfDoc.getForm();
-        form.getTextField(String(fieldMap.get('vendor_number')?.key ?? '')).setText(String(fieldMap.get('vendor_number')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('vendor_name')?.key ?? '')).setText(String(fieldMap.get('vendor_name')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('date')?.key ?? '')).setText(String(fieldMap.get('date')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('invoice_number')?.key ?? '')).setText(String(fieldMap.get('invoice_number')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('po_number')?.key ?? '')).setText(String(fieldMap.get('po_number')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('province')?.key ?? '')).setText(String(fieldMap.get('province')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('currency_selection')?.key ?? '')).setText(String(fieldMap.get('currency_selection')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('approval_date')?.key ?? '')).setText(String(fieldMap.get('approval_date')?.value ?? ''));
-        fieldMap.forEach((index, value) => {
-            if (typeof index === 'number') {
-                Object.entries(value).forEach(([id, obj]: [string, any]) => {
-                    //* mental example
-                    const description = id
-                    const value = fieldMap.get(obj)?.key
-                    const field = fieldMap.get(obj)?.value
-                    form.getTextField(String(value)).setText(String(field));
-                });
-            }
-        });
-        form.getTextField(String(fieldMap.get('subtotal')?.key ?? '')).setText(String(fieldMap.get('subtotal')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('taxValue')?.key ?? '')).setText(String(fieldMap.get('taxValue')?.value ?? ''));
-        if (fieldMap.has('secTaxValue')) {
-            form.getTextField(String(fieldMap.get('secTaxValue')?.key ?? '')).setText(String(fieldMap.get('secTaxValue')?.value ?? ''));
-        }
-        form.getTextField(String(fieldMap.get('totalAmount')?.key ?? '')).setText(String(fieldMap.get('totalAmount')?.value ?? ''));
-        form.flatten();
-        const pdfBytes = await pdfDoc.save();
-        return pdfBytes
-    }
-    const downloadQueue = async (data: any) => {
-        console.log("last step not done")
     }
     const [getDownloadData, setDownloadData] = useState<any[]>([]);
     const [getShowDownloadModal, setShowDownloadModal] = useState(false);
@@ -525,9 +575,6 @@ export default function Page() {
 
 
     // * CONSOLE COMMANDS
-    const runTest = async (data: any) => {
-        console.log(data[0].data)
-    }
     useEffect(() => {
         (window as any).dev = {
             setCanvasStateLoading: () => setCanvasState('loading'),
@@ -546,7 +593,7 @@ export default function Page() {
                     ims
                 </button>
                 <div className="flex gap-2 items-center">
-                    <button onClick={() => { runTest(getUploadedFiles) }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">runTest</button>
+                    <button onClick={() => { runTest(getUploadedFiles[0]) }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">runTest</button>
                 </div>
             </nav>
 
@@ -592,7 +639,7 @@ export default function Page() {
                                                 </svg>
                                             </div>
                                             <div className="flex flex-col items-left w-full">
-                                                <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.processedData.get("vendor_name")}</span>
+                                                <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.processedData["vendor_name"]}</span>
                                                 <div className="flex gap-1">
                                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
