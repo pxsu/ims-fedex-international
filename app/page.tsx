@@ -1,15 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import * as XLSX from 'xlsx';
 import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from "@/firebase"
 import { Transition } from '@headlessui/react';
 import { PDFDocument } from 'pdf-lib';
-
-import { useInvoiceProcessor } from '@/app/pdfjs/documentProcessor';
-import { convertPdfToImage, downloadBlob } from '@/app/pdfjs/conversionProcessor';
 
 {/* REQUIREMENT: GLOBAL WORKER */ }
 import { pdfjs } from "react-pdf";
@@ -50,29 +47,27 @@ export default function Page() {
         }, 3000);
     };
 
-    // * CIA SELECTION CODE
-    const ciaInputRef = useRef<HTMLInputElement>(null);
-    const handleCiaFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setCiaTemplate(file);
-        }
-    };
-
-    // * TOP BAR FUNCTIONALITY
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    // * DRAG / DROP FUNCTIONALITY
     const [isDragging, setIsDragging] = useState(false);
-    const [getCiaTemplate, setCiaTemplate] = useState<any>(null);
+    const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDragging(true);
     };
+    const handleExcelOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingExcel(true);
+    };
     const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDragging(false);
     }
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleExcelLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingExcel(false);
+    }
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
         // * FEATURES: TYPE VALIDATION -- SIZE LIMIT GAURD -- REHYDRATION
         e.preventDefault();
         setIsDragging(false);
@@ -88,19 +83,79 @@ export default function Page() {
                     const message = invalidFile.type !== 'application/pdf' ? `${invalidFile.name} is not a PDF` : `${invalidFile.name} exceeds ${MAX_SIZE_MB}MB limit`;
                     showNotification("Error", message, "error");
                 } else {
-                    Array.from(files).map(async (file) => {
+                    for (const file of Array.from(files)) {
                         const index = await renderSkeleton(file);
                         try {
-                            await handleFiles(file, index)
-                            await renderCoverSheet(index)
+                            const fileData = await handleFiles(file, index);
+                            await vendorMatch(index, fileData);
                         } catch (err) {
                             showNotification("Error", `Could not render ${files.length} file${files.length > 1 ? 's' : ''}`, "info");
                         }
-                    })
+                    }
                 }
             } catch (err) {
                 showNotification("Error", "Something went wrong uploading your files", "error");
             }
+        }
+    }
+    const vendorMatch = async (index: number, fileData: any) => {
+        try {
+            const activeCompanyId = "FedEx";
+            const rawVendorName = fileData.processedData["vendor_name"];
+            const result = await smartQuery(rawVendorName, activeCompanyId);
+            if (result.status === 'AUTO_RESOLVED' && result.match) {
+                await resolutionLog({
+                    companyId: activeCompanyId,
+                    parentId: result.match.vendorId,
+                    rawInput: rawVendorName,
+                    confidence: result.match.score,
+                    wasManual: false,
+                    resolvedBy: 'system',
+                    invoiceFile: getUploadedFiles[index].unProcessedData,
+                });
+                await promoteAlias({
+                    companyId: activeCompanyId,
+                    parentId: result.match.vendorId,
+                    rawInput: rawVendorName,
+                });
+
+                const vendorDoc = await getDoc(doc(db, activeCompanyId, 'query', 'vendor_data', result.match.vendorId));
+                const vendorData = vendorDoc.data();
+
+                setUploadedFiles(prev => {
+                    const updated = [...prev];
+                    updated[index] = {
+                        ...updated[index],
+                        resolution: {
+                            status: 'AUTO_RESOLVED',
+                            vendorId: result.match.vendorId,
+                            canonicalName: result.match.canonicalName,
+                            confidence: result.match.score,
+                            userInterventionRequired: false,
+                        },
+                        vendorData
+                    };
+                    sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
+                    return updated;
+                });
+            } else {
+                setUploadedFiles(prev => {
+                    const updated = [...prev];
+                    updated[index] = {
+                        ...updated[index],
+                        resolution: {
+                            status: 'NEEDS_RESOLUTION',
+                            candidates: result.candidates,
+                            userInterventionRequired: true,
+                            rawInput: rawVendorName,
+                        }
+                    };
+                    sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
+                    return updated;
+                });
+            }
+        } catch (error) {
+            showNotification("Error", `vendorMatch says: ${error}`, "error");
         }
     }
     const renderSkeleton = async (file: File) => {
@@ -138,89 +193,363 @@ export default function Page() {
             sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
             return updated;
         });
+        return fileData;
     }
-    const renderCoverSheet = async (index: number) => {
-        // * INPUT: index number to add new variable holding pdf base64 data
-        // * OUTPUT: coverSheetData: base64
-
-        let vendorData;
-        const inputData = new Map();
-        try {
-            // TODO: get the appropriate vendor data
-            try {
-                // TODO: const searchName = smartQuery(getUploadedFiles[index])
-                await smartQuery(getUploadedFiles[index].processedData["vendor_name"])
-            } catch (err) {
-                console.log(err);
-            }
-        } catch (err) {
-            console.log(err);
+    const handleExcelDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingExcel(false);
+        const allFiles = Array.from(e.dataTransfer.files);
+        const files = allFiles.filter(f =>
+            f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+        );
+        if (files.length === 0) {
+            showNotification("System", `No Excel files detected`, "info");
+        } else if (files.length === 1) {
+            handleExcelFiles(files);
+            setExcelModal(true);
+            setShowVendorModal(false);
+        } else {
+            handleExcelFiles(files);
+            setExcelModal(true);
+            setShowVendorModal(false);
         }
+    };
 
-        // TODO: const coverSheetData = newPdf(inputData);
-        const fileData = {
-            // TODO: coverSheetData: coverSheetData
-        }
-        setUploadedFiles(prev => {
-            const updated = [...prev];
-            updated[index] = { ...updated[index], ...fileData };
-            sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
-            return updated;
-        })
-    }
-    const runTest = async (data: any) => {
-        console.log(`Now searching for ${data.processedData["vendor_name"]}`)
-        smartQuery(data.processedData["vendor_name"]);
-    }
-    const smartQuery = async (inputQuery: string) => {
-        console.log("i work")
-        
-        const question = query(collection(db, "vendor_data"), where("vendorEmpName", "==", inputQuery));
-        console.log(question)
-
-        const snapshot = await getDocs(question);
-
-        snapshot.forEach((doc) => {
-            console.log('hi')
-            console.log(doc.id, doc.data());
-        });
-    }
-    const newPdf = () => {
+    // * ------------ DOWNLOAD DECISION TREE 
+    const downloadQueue = async () => {
         null
     }
-    const fillPdfField = async (fieldMap: Map<string, { key: string | number; value: string }>): Promise<Uint8Array> => {
-        const arrayBuffer = await getCiaTemplate.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
-        const form = pdfDoc.getForm();
-        form.getTextField(String(fieldMap.get('vendor_number')?.key ?? '')).setText(String(fieldMap.get('vendor_number')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('vendor_name')?.key ?? '')).setText(String(fieldMap.get('vendor_name')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('date')?.key ?? '')).setText(String(fieldMap.get('date')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('invoice_number')?.key ?? '')).setText(String(fieldMap.get('invoice_number')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('po_number')?.key ?? '')).setText(String(fieldMap.get('po_number')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('province')?.key ?? '')).setText(String(fieldMap.get('province')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('currency_selection')?.key ?? '')).setText(String(fieldMap.get('currency_selection')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('approval_date')?.key ?? '')).setText(String(fieldMap.get('approval_date')?.value ?? ''));
-        fieldMap.forEach((index, value) => {
-            if (typeof index === 'number') {
-                Object.entries(value).forEach(([id, obj]: [string, any]) => {
-                    //* mental example
-                    const description = id
-                    const value = fieldMap.get(obj)?.key
-                    const field = fieldMap.get(obj)?.value
-                    form.getTextField(String(value)).setText(String(field));
-                });
-            }
-        });
-        form.getTextField(String(fieldMap.get('subtotal')?.key ?? '')).setText(String(fieldMap.get('subtotal')?.value ?? ''));
-        form.getTextField(String(fieldMap.get('taxValue')?.key ?? '')).setText(String(fieldMap.get('taxValue')?.value ?? ''));
-        if (fieldMap.has('secTaxValue')) {
-            form.getTextField(String(fieldMap.get('secTaxValue')?.key ?? '')).setText(String(fieldMap.get('secTaxValue')?.value ?? ''));
+
+    // * ------------
+
+    const [getCurrentProcessingIndex, setCurrentProcessingIndex] = useState(0);
+    const [getProcessedFileData, setProcessedFileData] = useState<any[]>([]);
+    const [getExcelModal, setExcelModal] = useState(false);
+    const [getCurrentExcelPage, setCurrentExcelPage] = useState(0);
+    const navigateExcelPage = (direction: 'left' | 'right') => {
+        if (direction === 'left' && getCurrentExcelPage > 0) {
+            setCurrentExcelPage(getCurrentExcelPage - 1);
+        } else if (direction === 'right' && getCurrentExcelPage < getProcessedFileData.length - 1) {
+            setCurrentExcelPage(getCurrentExcelPage + 1);
         }
-        form.getTextField(String(fieldMap.get('totalAmount')?.key ?? '')).setText(String(fieldMap.get('totalAmount')?.value ?? ''));
-        form.flatten();
-        const pdfBytes = await pdfDoc.save();
-        return pdfBytes
+    };
+    useEffect(() => {
+        if (getExcelModal) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [getExcelModal]);
+    const handleExcelFiles = async (files: File[]) => {
+        const allFileData: any[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            setCurrentProcessingIndex(i);
+            const arrayBuffer = await file.arrayBuffer();
+            const base64 = await convertFileToBase64(file);
+            const fileData = {
+                index: i,
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                data: base64,
+                processed: false
+            };
+            allFileData.push(fileData);
+            const processedResult = await processExcelData(arrayBuffer);
+            allFileData[i] = {
+                ...allFileData[i],
+                processedData: processedResult,
+                processed: true
+            };
+            setProcessedFileData([...allFileData]);
+        }
     }
+    interface ExcelRow {
+        __EMPTY?: string;
+        __EMPTY_1?: string | number;
+        __EMPTY_3?: string | number;
+        __EMPTY_10?: string | number;
+        __EMPTY_4?: string | number;
+        __EMPTY_5?: string | number;
+        __EMPTY_12?: string;
+        __EMPTY_13?: string;
+    }
+    interface GLAccount {
+        description: string | null;
+        gl_account: string | null;
+        cost_centre: string | null;
+    }
+    useEffect(() => {
+        (window as any).taxQuery = taxQuery;
+        return () => {
+            delete (window as any).taxQuery;
+        }
+    }, []);
+    const taxQuery = (province: string) => {
+        const tax = taxRates[province];
+        if (!tax) {
+            showNotification("System", `No tax data found for province: ${province}`, "error");
+            return null;
+        }
+        return {
+            totalRate: tax.totalRate,
+            gstType: tax.gstType,
+            ...(tax.pstType && { pstType: tax.pstType })
+        }
+    }
+    const taxRates: { [key: string]: { totalRate: number, gstRate: number, gstType: string, pstRate?: number, pstType?: string } } = {
+        'ON': { totalRate: 0.13, gstRate: 0.13, gstType: 'HST-122810' },
+        'QC': { totalRate: 0.14975, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.09975, pstType: 'QST-122900' },
+        'BC': { totalRate: 0.12, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.07, pstType: 'PST-122850' },
+        'AB': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
+        'SK': { totalRate: 0.11, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.06, pstType: 'PST-122850' },
+        'MB': { totalRate: 0.12, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.07, pstType: 'PST-122850' },
+        'NS': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+        'NB': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+        'NL': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+        'PE': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
+        'YT': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
+        'NT': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
+        'NU': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' }
+    };
+    const processExcelData = async (arrayBuffer: ArrayBuffer) => {
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(sheet);
+        const findRow = (text: string) => jsonData.find(row => row.__EMPTY?.includes(text));
+        const vendorRow = findRow('VENDOR/EMP #:');
+        const provinceRow = findRow('SELECT PROVINCE');
+        const totalRow = jsonData.find(row => row.__EMPTY_3?.toString().trim() === 'Total');
+        const relevant_gls = jsonData
+            .filter(row => row.__EMPTY_3 && typeof row.__EMPTY_3 === 'number' && row.__EMPTY_5)
+            .map(row => ({
+                columns: {
+                    description: { label: 'DESCRIPTION / PURPOSE', value: row.__EMPTY?.toString() || null },
+                    gl_account: { label: 'GL ACCOUNT', value: row.__EMPTY_3?.toString() || null },
+                    cost_centre: { label: 'COST CENTRE', value: row.__EMPTY_4?.toString() || null },
+                }
+            }));
+        const currency: 'CAD' | 'USD' | null = totalRow?.__EMPTY_5 ? 'CAD' : 'USD';
+        return {
+            vendorEmpNumber: {
+                label: 'VENDOR NUMBER',
+                values: vendorRow?.__EMPTY_1 ? Number(vendorRow.__EMPTY_1) : null
+            },
+            vendorEmpName: {
+                label: 'VENDOR NAME',
+                values: vendorRow?.__EMPTY_4?.toString() || null
+            },
+            relevant_gls: {
+                label: 'GL ACCOUNTS',
+                values: relevant_gls
+            },
+            taxValue: (() => {
+                const province = provinceRow?.__EMPTY_1?.toString() || null;
+                if (!province) return null;
+                const tax = taxQuery(province);
+                if (!tax) return null;
+                return {
+                    label: 'PROVINCE & TAX CODES',
+                    province,
+                    ...tax
+                };
+            })(),
+            costCentre: {
+                label: 'COST CENTER',
+                values: provinceRow?.__EMPTY_4 ? Number(provinceRow.__EMPTY_4) : null
+            },
+            currency: {
+                label: 'CURRENCY',
+                values: currency
+            },
+        };
+    };
+    const [getSubmissionIndex, setSubmissionIndex] = useState<any[]>([]);
+    const submitToFirebase = async (data: any, companyId: string) => {
+        for (let i = 0; i < data.length; i++) {
+            try {
+                setUploadStatus('uploading');
+                const vendorName = data[i]?.processedData.vendorEmpName.values
+                    ?.toString()
+                    .trim()
+                    .toUpperCase()
+                    .replace(/[/.]/g, '_');
+                const docRef = doc(db, companyId, 'query', 'vendor_data', vendorName);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    setSubmissionIndex(prev => [...prev, { index: i, exists: 1 }]);
+                    await setDoc(docRef, {
+                        ...data[i].processedData,
+                        updatedAt: new Date(),
+                    }, { merge: true });
+                    setUploadStatus("exists");
+                } else {
+                    setSubmissionIndex(prev => [...prev, { index: i, exists: 0 }]);
+                    await setDoc(docRef, {
+                        ...data[i].processedData,
+                        canonicalName: vendorName,
+                        aliases: [],
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                    setUploadStatus("success");
+                }
+            } catch (error) {
+                setSubmissionIndex(prev => [...prev, { index: i, exists: -1 }]);
+                setUploadStatus("error");
+                showNotification('System', `submitToFirebase says: ${error}`, 'error');
+            }
+        }
+        setTimeout(() => {
+            setExcelModal(false);
+            setUploadStatus('idle');
+            setSubmissionIndex([]);
+            setCurrentProcessingIndex(0);
+            setProcessedFileData([]);
+        }, 1500);
+    };
+    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'exists'>('idle');
+    const getUploadBtnResponse = () => {
+        const uploadedCount = getSubmissionIndex.filter(item => item.exists === 0).length;
+        const existingCount = getSubmissionIndex.filter(item => item.exists === 1).length;
+        const baseStyles = 'p-1 px-4 rounded-md transition-all';
+        if (uploadStatus === 'success' && uploadedCount === 0 && existingCount > 0) {
+            return {
+                className: `${baseStyles} bg-yellow-500 text-white`,
+                text: 'Files already exist'
+            };
+        }
+        const statusConfig = {
+            success: {
+                styles: 'bg-green-500 text-white',
+                text: `Uploaded ${uploadedCount} file${uploadedCount !== 1 ? 's' : ''}`
+            },
+            error: { styles: 'bg-red-500 text-white', text: 'Error' },
+            exists: { styles: 'bg-yellow-500 text-white', text: 'File Exists' },
+            uploading: { styles: 'bg-gray-400 text-white cursor-wait', text: 'Uploading...' },
+            idle: {
+                styles: 'bg-black text-white hover:bg-white hover:text-purple-500 hover:outline-2 hover:outline-purple-500 cursor-pointer',
+                text: 'Upload'
+            }
+        };
+        return {
+            className: `${baseStyles} ${statusConfig[uploadStatus].styles}`,
+            text: statusConfig[uploadStatus].text
+        };
+    };
+
+    // * ------------------
+
+    const levenshtein = (a: string, b: string): number => {
+        const matrix = Array.from({ length: b.length + 1 }, (_, i) => [i]);
+        matrix[0] = Array.from({ length: a.length + 1 }, (_, i) => i);
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                matrix[i][j] = b[i - 1] === a[j - 1]
+                    ? matrix[i - 1][j - 1]
+                    : Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i - 1][j] + 1,
+                        matrix[i][j - 1] + 1
+                    );
+            }
+        }
+        return matrix[b.length][a.length];
+    };
+    const fuzzyScore = (input: string, candidate: string): number => {
+        const a = input.toLowerCase().trim();
+        const b = candidate.toLowerCase().trim();
+        const distance = levenshtein(a, b);
+        const maxLen = Math.max(a.length, b.length);
+        return 1 - distance / maxLen;
+    };
+    const smartQuery = async (inputQuery: string, companyId: string) => {
+        const vendors = await getDocs(query(collection(db, companyId, 'query', 'vendor_data')));
+        const results = vendors.docs.map(doc => {
+            const data = doc.data();
+            const canonicalScore = fuzzyScore(inputQuery, data.canonicalName);
+            const aliasScore = data.aliases?.length ? Math.max(...data.aliases.map((alias: string) => fuzzyScore(inputQuery, alias))) : 0;
+            const finalScore = Math.max(canonicalScore, aliasScore);
+            return {
+                vendorId: doc.id,
+                canonicalName: data.canonicalName,
+                score: finalScore
+            };
+        });
+        const ranked = results
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 5);
+        if (ranked[0].score > 0.85) {
+            return { status: 'AUTO_RESOLVED', match: ranked[0] };
+        }
+        return { status: 'NEEDS_RESOLUTION', candidates: ranked };
+    }
+    const resolutionLog = async ({
+        companyId,
+        parentId,
+        rawInput,
+        confidence,
+        wasManual,
+        resolvedBy,
+        invoiceFile,
+    }: {
+        companyId: string,
+        parentId: string,
+        rawInput: string,
+        confidence: number,
+        wasManual: boolean,
+        resolvedBy: string,
+        invoiceFile: string,
+    }) => {
+        try {
+            const resolutionRef = collection(db, companyId, 'query', 'vendor_data', parentId, 'resolutions');
+            await addDoc(resolutionRef, {
+                rawInput,
+                confidence,
+                wasManual,
+                resolvedBy,
+                invoiceFile,
+                resolvedAt: new Date(),
+            })
+        } catch (error) {
+            showNotification('System', `logResolution error: ${error}`, 'error');
+        }
+    }
+
+    const promoteAlias = async ({
+        companyId,
+        parentId,
+        rawInput,
+    }: {
+        companyId: string,
+        parentId: string,
+        rawInput: string,
+    }) => {
+        try {
+            const resolutionsRef = collection(db, companyId, 'query', 'vendor_data', parentId, 'resolutions');
+            const resolutionSnap = await getDocs(query(resolutionsRef, where('rawInput', '==', rawInput)));
+            const seenCount = resolutionSnap.size;
+            if (seenCount >= 10) {
+                const parentRef = doc(db, companyId, 'query', 'vendor_data', parentId);
+                await updateDoc(parentRef, {
+                    aliases: arrayUnion(rawInput.toLowerCase().trim()),
+                    updatedAt: new Date(),
+                });
+                showNotification('System', `promoted "${rawInput}" to alias of ${parentId} after ${seenCount} resolutions`, 'error');
+            }
+        } catch (error) {
+            showNotification('System', `promoteAlias says ${error}`, 'error');
+        }
+    };
+
+    // * ------------------
+
     const processInvoice = async (base64: string) => {
         console.log(`BASE64 DATA: ${base64}`)
         const pdfData = atob(base64.split(',')[1]);
@@ -277,9 +606,6 @@ export default function Page() {
             throw err;
         }
     }
-    const downloadQueue = (queue: any[]) => {
-        null
-    }
     const clearUploadedFiles = () => {
         setUploadedFiles([]);
         sessionStorage.removeItem('uploadedFiles');
@@ -291,55 +617,8 @@ export default function Page() {
         }
     }, []);
     const [getCanvasState, setCanvasState] = useState<'idle' | 'loading'>('idle');
-
-    // * FILL PDF FIELD
-    const getCurrentDate = (): string => {
-        const now = new Date();
-        const day = now.getDate();
-        const month = now.toLocaleString('en-US', { month: 'short' });
-        return `${day}-${month}`;
-    };
-    const getTaxValue = (vendorInfo: any) => {
-        const province = vendorInfo.province;
-        const taxRates: { [key: string]: { totalRate: number, gstRate: number, gstType: string, pstRate?: number, pstType?: string } } = {
-            'ON': { totalRate: 0.13, gstRate: 0.13, gstType: 'HST-122810' },
-            'QC': { totalRate: 0.14975, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.09975, pstType: 'QST-122900' },
-            'BC': { totalRate: 0.12, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.07, pstType: 'PST-122850' },
-            'AB': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
-            'SK': { totalRate: 0.11, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.06, pstType: 'PST-122850' },
-            'MB': { totalRate: 0.12, gstRate: 0.05, gstType: 'GST-122800', pstRate: 0.07, pstType: 'PST-122850' },
-            'NS': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
-            'NB': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
-            'NL': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
-            'PE': { totalRate: 0.15, gstRate: 0.15, gstType: 'HST-122810' },
-            'YT': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
-            'NT': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' },
-            'NU': { totalRate: 0.05, gstRate: 0.05, gstType: 'GST-122800' }
-        };
-        return taxRates[province] || { totalRate: 0, gstRate: 0, gstType: 'UNKNOWN' };
-    }
-    const phoneBook = async (): Promise<Map<string, any>> => {
-        const vendor_number = getGptData?.vendor_number;
-        const query = (`CIA-${vendor_number}`);
-        const docRef = doc(db, 'vendor_data', query);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            const vendorData = docSnap.data();
-            const vendorMap = new Map();
-            vendorMap.set('vendor_name', vendorData.vendor_name);
-            vendorMap.set('vendor_number', vendorData.vendor_number);
-            vendorMap.set('relevant_gls', vendorData.relevant_gls);
-            vendorMap.set('province', vendorData.province);
-            vendorMap.set('currency', vendorData.currency);
-            return vendorMap;
-        } else {
-            throw new Error(`Document ${query} not found`);
-        }
-    }
     const [getDownloadData, setDownloadData] = useState<any[]>([]);
-    const [getShowDownloadModal, setShowDownloadModal] = useState(false);
     const [getCurrentDownloadIndex, setCurrentDownloadIndex] = useState(0);
-    const [getShowProcessModal, setShowProcessModal] = useState(false);
 
     const downloadFiles = async (files: any[]) => {
         const mergedPdf = await PDFDocument.create();
@@ -365,204 +644,6 @@ export default function Page() {
         }, 1500);
     }
 
-
-    // * EXCEL FUNCTIONALITY
-    const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
-    const [getExcelModal, setExcelModal] = useState(false);
-    const [getCurrentExcelPage, setCurrentExcelPage] = useState(0);
-    const navigateExcelPage = (direction: 'left' | 'right') => {
-        if (direction === 'left' && getCurrentExcelPage > 0) {
-            setCurrentExcelPage(getCurrentExcelPage - 1);
-        } else if (direction === 'right' && getCurrentExcelPage < getProcessedFileData.length - 1) {
-            setCurrentExcelPage(getCurrentExcelPage + 1);
-        }
-    };
-    useEffect(() => {
-        if (getExcelModal) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [getExcelModal]);
-    const handleExcelDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        setIsDraggingExcel(true);
-    };
-    const handleExcelDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        setIsDraggingExcel(false);
-    }
-    const handleExcelDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        setIsDraggingExcel(false);
-        const allFiles = Array.from(e.dataTransfer.files);
-        const files = allFiles.filter(f =>
-            f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
-        );
-        if (files.length === 0) {
-            return;
-        } else if (files.length === 1) {
-            handleExcelFiles(files);
-            setExcelModal(true);
-        } else {
-            handleExcelFiles(files);
-            setExcelModal(true);
-        }
-    };
-    //* leaving this useState variable here so that if I come back and want to add more funcitonality its there
-    const [getCurrentProcessingIndex, setCurrentProcessingIndex] = useState(0);
-    const [getProcessedFileData, setProcessedFileData] = useState<any[]>([]);
-    const handleExcelFiles = async (files: File[]) => {
-        /**
-         * TODO: Account for 1 file or an array of files
-         * TODO: variable to store total index count
-         * TODO: state function to store real time index 
-         * TODO: after the end of processing each fileData, we need to replace the value stored in its existing position with the new processed data
-         * TODO: submit an array that either holds 1 index of processed data, versus 2 indexes of processed data
-         */
-        const allFileData: any[] = [];
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            setCurrentProcessingIndex(i);
-            const arrayBuffer = await file.arrayBuffer();
-            const base64 = await convertFileToBase64(file);
-            const fileData = {
-                index: i,
-                name: file.name,
-                size: file.size,
-                type: file.type,
-                lastModified: file.lastModified,
-                data: base64,
-                processed: false
-            };
-            allFileData.push(fileData);
-            const processedResult = await processExcelData(arrayBuffer);
-            allFileData[i] = {
-                ...allFileData[i],
-                processedData: processedResult,
-                processed: true
-            };
-            setProcessedFileData([...allFileData]);
-        }
-        sessionStorage.setItem('uploadedExcelFiles', JSON.stringify(getProcessedFileData));
-    }
-    interface ExcelRow {
-        __EMPTY?: string;
-        __EMPTY_1?: string | number;
-        __EMPTY_3?: string | number;
-        __EMPTY_10?: string | number;
-        __EMPTY_4?: string | number;
-        __EMPTY_5?: string | number;
-        __EMPTY_12?: string;
-        __EMPTY_13?: string;
-    }
-    interface GLAccount {
-        description: string | null;
-        gl_account: string | null;
-        cost_centre: string | null;
-    }
-    //* we don't use this?
-    interface ExtractedData {
-        vendorEmpNumber: number | null;
-        vendorEmpName: string | null;
-        relevant_gls: GLAccount[];
-        province: string | null;
-        taxValue: string | null;
-        costCentre: number | null;
-        currency: 'CAD' | 'USD' | null;
-    }
-    const processExcelData = async (arrayBuffer: ArrayBuffer) => {
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(sheet);
-        const findRow = (text: string) => jsonData.find(row => row.__EMPTY?.includes(text));
-        const vendorRow = findRow('VENDOR/EMP #:');
-        const provinceRow = findRow('SELECT PROVINCE');
-        const totalRow = jsonData.find(row => row.__EMPTY_3?.toString().trim() === 'Total');
-        const relevant_gls = jsonData
-            .filter(row => row.__EMPTY_3 && typeof row.__EMPTY_3 === 'number' && row.__EMPTY_5)
-            .map(row => ({
-                description: row.__EMPTY?.toString() || null,
-                gl_account: row.__EMPTY_3?.toString() || null,
-                cost_centre: row.__EMPTY_4?.toString() || null,
-            }));
-        const currency: 'CAD' | 'USD' | null = totalRow?.__EMPTY_5 ? 'CAD' : 'USD';
-        return {
-            vendorEmpNumber: vendorRow?.__EMPTY_1 ? Number(vendorRow.__EMPTY_1) : null,
-            vendorEmpName: vendorRow?.__EMPTY_4?.toString() || null,
-            relevant_gls,
-            province: provinceRow?.__EMPTY_1?.toString() || null,
-            taxValue: provinceRow?.__EMPTY_3?.toString() || null,
-            costCentre: provinceRow?.__EMPTY_4 ? Number(provinceRow.__EMPTY_4) : null,
-            currency,
-        };
-    };
-    const [getSubmissionIndex, setSubmissionIndex] = useState<any[]>([]);
-    const submitToFirebase = async (data: any) => {
-        for (let i = 0; i < data.length; i++) {
-            try {
-                setUploadStatus('uploading');
-                const docRef = doc(db, 'vendor_data', `CIA-${data[i]?.processedData.vendorEmpNumber}`);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    setSubmissionIndex(prev => [...prev, { index: i, exists: 1 }]);
-                    setUploadStatus("exists")
-                } else {
-                    setSubmissionIndex(prev => [...prev, { index: i, exists: 0 }]);
-                    await setDoc(docRef, data[i].processedData);
-                    setUploadStatus("success")
-                }
-            } catch (error) {
-                setSubmissionIndex(prev => [...prev, { index: i, exists: -1 }]);
-                setUploadStatus("error")
-            }
-        }
-        setTimeout(() => {
-            setExcelModal(false);
-            setUploadStatus('idle');
-            setSubmissionIndex([]);
-            setCurrentProcessingIndex(0);
-            setProcessedFileData([]);
-        }, 1500);
-    };
-    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'exists'>('idle');
-    const getUploadBtnResponse = () => {
-        const uploadedCount = getSubmissionIndex.filter(item => item.exists === 0).length;
-        const existingCount = getSubmissionIndex.filter(item => item.exists === 1).length;
-        const baseStyles = 'p-1 px-4 rounded-md transition-all';
-
-        if (uploadStatus === 'success' && uploadedCount === 0 && existingCount > 0) {
-            return {
-                className: `${baseStyles} bg-yellow-500 text-white`,
-                text: 'Files already exist'
-            };
-        }
-
-        const statusConfig = {
-            success: {
-                styles: 'bg-green-500 text-white',
-                text: `Uploaded ${uploadedCount} file${uploadedCount !== 1 ? 's' : ''}`
-            },
-            error: { styles: 'bg-red-500 text-white', text: 'Error' },
-            exists: { styles: 'bg-yellow-500 text-white', text: 'File Exists' },
-            uploading: { styles: 'bg-gray-400 text-white cursor-wait', text: 'Uploading...' },
-            idle: {
-                styles: 'bg-black text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 cursor-pointer',
-                text: 'Upload'
-            }
-        };
-
-        return {
-            className: `${baseStyles} ${statusConfig[uploadStatus].styles}`,
-            text: statusConfig[uploadStatus].text
-        };
-    };
-
-
     // * FILE TO BASE64
     const convertFileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -573,30 +654,51 @@ export default function Page() {
         });
     }
 
-
     // * CONSOLE COMMANDS
+    const runTest = async (data: any) => {
+        null
+    }
+    const getUploaded = async () => {
+        console.log(`${JSON.stringify(getUploadedFiles, null, 2)}`)
+    }
     useEffect(() => {
         (window as any).dev = {
-            setCanvasStateLoading: () => setCanvasState('loading'),
-            setCanvasStateIdle: () => setCanvasState('idle'),
+            runTest,
+            getUploaded,
+            inspect: () => console.log("getProcessedFileData", JSON.stringify(getProcessedFileData, null, 2))
         };
-    }, [getCanvasState]);
+    }, [getUploadedFiles]);
 
+    // * SELECTION ALGO
+    const [getIsSelected, setIsSelected] = useState<number[]>([]);
+    const [getFilePreview, setFilePreview] = useState(false);
+    const [getPreviewIndex, setPreviewIndex] = useState<number | null>(null);
+
+    // * DOWNLOAD MODAL
+    const [getShowDownloadModal, setShowDownloadModal] = useState(false);
+
+    // * ADD VENDOR MODAL
+    const [getShowVendorModal, setShowVendorModal] = useState(false);
+
+    // * DB SELECTION
+    const [getSetDbLock, setSetDbLock] = useState(true);
+    const [getDbSelection, setDbSelection] = useState(false);
+    const MAX_VISIBLE = 5;
 
     return (
         <main data-section="whole page" className="bg-white text-black h-screen flex flex-col">
-
             <nav className="flex gap-2 justify-between bg-neutral-100 p-2 px-8 items-center h-14">
-                <button
-                    onClick={() => window.location.href = '/'}
-                    className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(51.1_0.262_276.96)] transition-all cursor-pointer">
-                    ims
-                </button>
-                <div className="flex gap-2 items-center">
-                    <button onClick={() => { runTest(getUploadedFiles[0]) }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:border-2 hover:border-purple-500 transition-all cursor-pointer">runTest</button>
+                <div className="w-4 h-full">
+                    <button onClick={() => window.location.href = '/'} className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(51.1_0.262_276.96)] transition-all cursor-pointer">ims</button>
                 </div>
+                <div onClick={() => setDbSelection(prev => !prev)} className={`flex gap-1 items-center py-1 px-3 rounded-xl cursor-pointer transition-all ${getSetDbLock ? 'outline-2 outline-indigo-500 bg-indigo-200 text-indigo-700' : 'outline-2 outline-gray-300 bg-gray-100 text-gray-400'}`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 0 0-9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                    <span>FedEx</span>
+                </div>
+                <button onClick={() => { runTest(getUploadedFiles[0]) }} className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">runTest</button>
             </nav>
-
             <section
                 data-section="drag and drop area"
                 onDragOver={handleDragOver}
@@ -620,9 +722,12 @@ export default function Page() {
                             {getUploadedFiles.map((file, index) => {
                                 const bytes = file.size || 0;
                                 const size = bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+                                const isSelected = getIsSelected.includes(index);
+                                const baseClass = `bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-indigo-400 ${isSelected ? 'outline-2 outline-indigo-400' : ''}`;
+                                const needAttention = `bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-amber-400 ${isSelected ? 'outline-2 outline-amber-400' : ''}`;
                                 if (file.state === "skeleton") {
                                     return (
-                                        <div className="bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden hover:outline-2 hover:outline-indigo-400 cursor-pointer" key={index}>
+                                        <div className={baseClass} key={index} onClick={() => setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index])}>
                                             <div className="animate-spin rounded-full w-32 h-32 border-[3px] border-gray-200 border-t-indigo-400" />
                                             <div className="flex flex-col items-left w-full gap-1">
                                                 <div className="text-gray-400 text-[10px] sm:text-xs md:text-sm animate-pulse w-full bg-neutral-200 h-5 rounded"></div>
@@ -630,9 +735,9 @@ export default function Page() {
                                             </div>
                                         </div>
                                     );
-                                } else {
+                                } else if (file.resolution?.status === 'AUTO_RESOLVED' && file.state === 'file_object') {
                                     return (
-                                        <div className="bg-gray-100 flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden hover:outline-2 hover:outline-indigo-400 cursor-pointer" key={index}>
+                                        <div className={baseClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setFilePreview(true); setPreviewIndex(index); }}>
                                             <div className="flex-1 flex items-center justify-center">
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-14 h-14 text-gray-400">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -649,13 +754,43 @@ export default function Page() {
                                             </div>
                                         </div>
                                     );
+                                } else if (file.resolution?.status === 'NEEDS_RESOLUTION' && file.state === 'file_object') {
+                                    return (
+                                        <div className={needAttention} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setFilePreview(true); setPreviewIndex(index); }}>
+                                            <div className="flex-1 flex items-center justify-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1" stroke="currentColor" className="w-16 h-16 text-amber-400">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                                                </svg>
+                                            </div>
+                                            <div className="flex flex-col items-left w-full">
+                                                <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{`${file.processedData["vendor_name"]}`}</span>
+                                                <div className="flex gap-1">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                    </svg>
+                                                    <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                } else if (file.state === 'file_object' && !file.resolution) {
+                                    return (
+                                        <div className={baseClass} key={index}>
+                                            <div className="flex-1 flex items-center justify-center">
+                                                <div className="animate-spin rounded-full w-14 h-14 border-[3px] border-gray-200 border-t-indigo-400" />
+                                            </div>
+                                            <div className="flex flex-col items-left w-full gap-1">
+                                                <div className="animate-pulse w-full bg-neutral-200 h-5 rounded" />
+                                                <span className="text-gray-400 text-[10px]">Matching vendor...</span>
+                                            </div>
+                                        </div>
+                                    );
                                 }
                             })}
                         </div>
                     </div>
                 </div>
             </section>
-
             <section data-section="file queue array" className="p-8 flex-1">
                 <div className="flex-1 flex items-center justify-center -translate-y-6 text-black/40 gap-2">
                     <span>{`${getUploadedFiles.length} files added`}</span>
@@ -668,16 +803,28 @@ export default function Page() {
                         </div>
                     </button>
                 </div>
-                <div className="flex justify-between">
-                    <button className="bg-black p-3 px-6 rounded-xl cursor-pointer text-white hover:text-black hover:bg-transparent hover:outline-2 hover:outline-black">PDF to Image</button>
+                <div data-section='FUN BUTTONS' className="flex justify-between">
+                    <div className="flex gap-4">
+                        <button onClick={() => { showNotification("System", 'Button is not programmed yet', "error"); }} className="flex items-center gap-2 bg-black p-3 px-6 rounded-xl cursor-pointer text-white hover:text-black hover:bg-transparent hover:outline-2 hover:outline-black">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                            </svg>
+                            PDF to Image
+                        </button>
+                        <button onClick={() => { setShowVendorModal(true) }} className="flex items-center gap-2 bg-black p-3 px-6 rounded-xl cursor-pointer text-white hover:text-black hover:bg-transparent hover:outline-2 hover:outline-black">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+                            </svg>
+                            Add Vendor
+                        </button>
+                    </div>
                     {getUploadedFiles.length > 0 ? (
-                        <button onClick={() => downloadQueue(getUploadedFiles)} className="bg-indigo-500 p-3 px-6 text-white rounded-xl cursor-pointer hover:text-indigo-500 hover:bg-transparent hover:outline-2 hover:outline-indigo-500">Download</button>
+                        <button onClick={() => downloadQueue()} className="bg-indigo-500 p-3 px-6 text-white rounded-xl cursor-pointer hover:text-indigo-500 hover:bg-transparent hover:outline-2 hover:outline-indigo-500">Download</button>
                     ) : (
                         <button disabled className="bg-indigo-200 p-3 px-6 text-white rounded-xl cursor-not-allowed opacity-50">Download</button>
                     )}
                 </div>
             </section>
-
             {
                 <div className="pointer-events-none fixed -inset-3 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[9999]">
                     <div className="flex w-full flex-col items-center space-y-2">
@@ -715,8 +862,181 @@ export default function Page() {
                     </div>
                 </div>
             }
-
-
+            {getDbSelection && (
+                <div className="fixed inset-0 flex justify-center z-50 translate-y-14">
+                    <div className="">
+                        <div className="bg-white rounded-xl p-4 w-128 flex flex-col gap-4 transition">
+                            <div className="flex justify-end items-center">
+                                <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">
+                                    <svg
+                                        onClick={() => setDbSelection(false)}
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                        stroke="currentColor"
+                                        className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div className="w-full">
+                                <span className="text-sm text-neutral-400 block text-center">List of available databases</span>
+                                {MAX_VISIBLE && (
+                                    <div className="bg-gray-200 py-2 px-4 rounded-lg hover:outline-2 hover:outline-indigo-400 cursor-pointer">
+                                        <div className="flex justify-between items-center">
+                                            <div className="text-md">FedEx</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {getShowVendorModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-1000">
+                    <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">
+                                <svg
+                                    onClick={() => { setShowVendorModal(false) }}
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-6 h-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                </svg>
+                            </div>
+                            <div className="text-xs text-neutral-500">Excel files only</div>
+                            <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:outline-2 hover:outline-purple-500 transition-all cursor-pointer" onClick={() => { showNotification("Error", "This button hasn't been programmed yet", "error"); }}>Add</button>
+                        </div>
+                        <section
+                            onDragOver={handleExcelOver}
+                            onDragLeave={handleExcelLeave}
+                            onDrop={handleExcelDrop}
+                            className={`flex flex-1 justify-center items-center transition-all rounded-lg border-2 border-dashed text-neutral-300 ${getIsDraggingExcel ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-gray-100 border-gray-200'}`}>
+                            <div className="flex flex-col items-center justify-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={0.5} stroke="currentColor" className="w-32 h-32">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                </svg>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            )}
+            {getExcelModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-xl w-144 min-h-96 max-h-[80vh] overflow-y-auto">
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center mb-4">
+                                <div className="flex gap-1 justify-center items-center">
+                                    <div>Adding</div>
+                                    <span>"{(() => {
+                                        const name = getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.values;
+                                        return name?.length > 30 ? `${name.slice(0, 30)}...` : name;
+                                    })()}"</span>
+                                </div>
+                                <button
+                                    onClick={() => setExcelModal(false)}
+                                    className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
+                                    <div className="flex px-1 items-center gap-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                        </svg>
+                                    </div>
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-2">
+                                <div>
+                                    <p className="text-xs text-gray-500">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpNumber.label}</p>
+                                    <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpNumber.values}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.label}</p>
+                                    <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.values}</p>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.relevant_gls.label}</p>
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-100">
+                                            <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
+                                            <th className="border p-2 text-center">GL ACCOUNT</th>
+                                            <th className="border p-2 text-center">COST CENTRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {getProcessedFileData[getCurrentExcelPage]?.processedData?.relevant_gls.values.map((gl: any, index: number) => (
+                                            <tr key={index}>
+                                                <td className="border p-2">{gl.columns.description.value || 'N/A'}</td>
+                                                <td className="border p-2 text-center font-semibold">{gl.columns.gl_account.value || 'N/A'}</td>
+                                                <td className="border p-2 text-center font-semibold">{gl.columns.cost_centre.value || 'N/A'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue?.label}</p>
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-100">
+                                            <th className="border p-2 text-left">PROVINCE</th>
+                                            <th className="border p-2 text-left">TAX 1</th>
+                                            <th className="border p-2 text-left">TAX 2</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td className="border p-2 font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue?.province ?? 'N/A'}</td>
+                                            <td className="border p-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue?.gstType ?? 'N/A'}</td>
+                                            <td className="border p-2 text-gray-400">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue?.pstType ?? 'N/A'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">{getProcessedFileData[getCurrentExcelPage]?.processedData?.currency.label}</p>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2">
+                                        <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency.values === 'CAD'} readOnly />
+                                        <span>CAD</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency.values === 'USD'} readOnly />
+                                        <span>USD</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <button
+                                    onClick={() => { submitToFirebase(getProcessedFileData, "FedEx") }}
+                                    disabled={uploadStatus !== 'idle'}
+                                    className={getUploadBtnResponse().className}>
+                                    {getUploadBtnResponse().text}
+                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => { navigateExcelPage("left") }}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 9-3 3m0 0 3 3m-3-3h7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                        </svg>
+                                    </button>
+                                    <div>Page {getCurrentExcelPage + 1}</div>
+                                    <button onClick={() => { navigateExcelPage("right") }}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="m12.75 15 3-3m0 0-3-3m3 3h-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {getShowDownloadModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
@@ -744,206 +1064,35 @@ export default function Page() {
                     </div>
                 </div>
             )}
-
-
-            {getExcelModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white p-8 rounded-xl w-144 min-h-96 max-h-[80vh] overflow-y-auto">
-                        <div className="space-y-4">
-                            {/**
-                             * 🟢 all of the errors here are because we removed 
-                             * getExcelTemplate or whatever. This is wrong as 
-                             * we're processing just one file. We need to change 
-                             * this modal so that it (1) checks to see how many 
-                             * files are in array, (2), displays modal 1 for just one file, 
-                             * and modal 2 for displaying previews of multiple files, 
-                             * and with the click of the cursor being able to switch 
-                             * to any one of them. 
-                             */}
-                            {getProcessedFileData.length === 1 ? (
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <div className="flex gap-1 justify-center items-center">
-                                            <div>Adding</div>
-                                            <span>"{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.length > 30 ? `${getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.slice(0, 30)}...` : getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}"</span>
-                                        </div>
-                                        <button
-                                            onClick={() => setExcelModal(false)}
-                                            className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
-                                            <div className="flex px-1 items-center gap-1">
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                                </svg>
-                                            </div>
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-2">
-                                        <div>
-                                            <p className="text-xs text-gray-500">VENDOR NUMBER</p>
-                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpNumber}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500">VENDOR NAME</p>
-                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}</p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-2">GL ACCOUNTS</p>
-                                        <table className="w-full border-collapse text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
-                                                    <th className="border p-2 text-center">GL ACCOUNT</th>
-                                                    <th className="border p-2 text-center">COST CENTRE</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {getProcessedFileData[getCurrentExcelPage]?.processedData?.relevant_gls.map((gl: any, index: number) => (
-                                                    <tr key={index}>
-                                                        <td className="border p-2">{gl.description || null}</td>
-                                                        <td className="border p-2 text-center font-semibold">{gl.gl_account || null}</td>
-                                                        <td className="border p-2 text-center font-semibold">{gl.cost_centre || null}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-2">PROVINCE & TAX CODES</p>
-                                        <table className="w-full border-collapse text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="border p-2 text-left">PROVINCE</th>
-                                                    <th className="border p-2 text-left">TAX 1</th>
-                                                    <th className="border p-2 text-left">TAX 2</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr>
-                                                    <td className="border p-2 font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.province}</td>
-                                                    <td className="border p-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue}</td>
-                                                    <td className="border p-2 text-gray-400">N/A</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
-                                        <div className="flex gap-4">
-                                            <label className="flex items-center gap-2">
-                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'CAD'} readOnly />
-                                                <span>CAD</span>
-                                            </label>
-                                            <label className="flex items-center gap-2">
-                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'USD'} readOnly />
-                                                <span>USD</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <div className="flex gap-1 justify-center items-center">
-                                            <div>Adding</div>
-                                            <span>"{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.length > 30 ? `${getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName.slice(0, 30)}...` : getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}"</span>
-                                        </div>
-                                        <button
-                                            onClick={() => setExcelModal(false)}
-                                            className="bg-red-500 p-2 rounded-md text-white hover:bg-white hover:text-red-500 hover:outline-2 hover:outline-red-500 transition-all cursor-pointer">
-                                            <div className="flex px-1 items-center gap-1">
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                                </svg>
-                                            </div>
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-2">
-                                        <div>
-                                            <p className="text-xs text-gray-500">VENDOR NUMBER</p>
-                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpNumber}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500">VENDOR NAME</p>
-                                            <p className="font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.vendorEmpName}</p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-2">GL ACCOUNTS</p>
-                                        <table className="w-full border-collapse text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="border p-2 text-left">DESCRIPTION / PURPOSE</th>
-                                                    <th className="border p-2 text-center">GL ACCOUNT</th>
-                                                    <th className="border p-2 text-center">COST CENTRE</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {getProcessedFileData[getCurrentExcelPage]?.processedData?.relevant_gls.map((gl: any, index: number) => (
-                                                    <tr key={index}>
-                                                        <td className="border p-2">{gl.description || null}</td>
-                                                        <td className="border p-2 text-center font-semibold">{gl.gl_account || null}</td>
-                                                        <td className="border p-2 text-center font-semibold">{gl.cost_centre || null}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-2">PROVINCE & TAX CODES</p>
-                                        <table className="w-full border-collapse text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="border p-2 text-left">PROVINCE</th>
-                                                    <th className="border p-2 text-left">TAX 1</th>
-                                                    <th className="border p-2 text-left">TAX 2</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr>
-                                                    <td className="border p-2 font-semibold">{getProcessedFileData[getCurrentExcelPage]?.processedData?.province}</td>
-                                                    <td className="border p-2">{getProcessedFileData[getCurrentExcelPage]?.processedData?.taxValue}</td>
-                                                    <td className="border p-2 text-gray-400">N/A</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-1">CURRENCY</p>
-                                        <div className="flex gap-4">
-                                            <label className="flex items-center gap-2">
-                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'CAD'} readOnly />
-                                                <span>CAD</span>
-                                            </label>
-                                            <label className="flex items-center gap-2">
-                                                <input type="radio" name="currency" checked={getProcessedFileData[getCurrentExcelPage]?.processedData?.currency === 'USD'} readOnly />
-                                                <span>USD</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex items-center justify-between">
+            {getFilePreview && getPreviewIndex !== null && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="flex flex-col items-center h-[90vh] w-[480px] bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
+                            <div className="w-full flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+                                <span className="text-white/70 text-sm font-medium tracking-wide">Preview</span>
                                 <button
-                                    onClick={() => { submitToFirebase(getProcessedFileData) }}
-                                    disabled={uploadStatus !== 'idle'}
-                                    className={getUploadBtnResponse().className}>
-                                    {getUploadBtnResponse().text}
+                                    onClick={() => setFilePreview(false)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white/50 text-xs hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                    Close
                                 </button>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => { navigateExcelPage("left") }}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 9-3 3m0 0 3 3m-3-3h7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                        </svg>
-                                    </button>
-                                    <div>Page {getCurrentExcelPage + 1}</div>
-                                    <button onClick={() => { navigateExcelPage("right") }}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="m12.75 15 3-3m0 0-3-3m3 3h-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                        </svg>
-                                    </button>
-                                </div>
                             </div>
+                            <img src="https://images.pexels.com/photos/32693233/pexels-photo-32693233.jpeg" className="flex-1 min-h-0 w-full object-cover" />
+                        </div>
+                        <div className="w-[480px] flex items-center justify-center gap-3">
+                            {[
+                                { label: "1", sub: null },
+                                { label: "2", sub: null },
+                                { label: "3", sub: null },
+                                { label: "4", sub: null },
+                            ].map(({ label, sub }) => (
+                                <button key={label} className="flex flex-col justify-center items-center flex-1 py-3 rounded-xl bg-white/15 border border-white/10 text-white/70 text-xs font-medium hover:bg-indigo-500/20 hover:border-indigo-400/50 hover:text-indigo-300 transition-all cursor-pointer gap-0.5">
+                                    <span className="font-semibold text-sm">{label}</span>
+                                    {sub && <span className="text-white/30 text-[10px]">{sub}</span>}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
