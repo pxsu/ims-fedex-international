@@ -284,26 +284,101 @@ export default function Page() {
         });
     };
 
-    const populatePdf = () => {
+    const populatePdf = async () => {
         null
     }
 
-    const generateTemplateSheet = async (file: any, i: number) => {
-        // TODO: take in file & index value ✅
-        // * PULL: | 'date' | 'invoice_number' | 'po_number' | 'subtotal' | 'taxValue' | 'secTaxValue' | FROM: processedData  & vendorData
-        const processedData = file.processedData;
+    const generateTemplateSheet = async (file: any, template: any) => {
+        const base64Data = template.data.replace(/^data:application\/pdf;base64,/, '');
+        const templateData = await base64Data;
+        let processedData: any;
+        let vendorData: any;
+        if (!templateData) {
+            showNotification('System', 'No template selected', 'error');
+            return;
+        }
+        try {
+            processedData = file.processedData;
+        } catch (err) {
+            showNotification('System', `generateTemplateSheet says: ${err}`, 'error');
+        }
+        try {
+            vendorData = file.vendorData
+        } catch (err) {
+            showNotification("System", `generateTemplateSheet says: ${err}`, "error")
+        }
 
-        // * PULL: | 'vendor_number' | 'vendor_name' | 'gl_accounts' | 'province' | 'currency_selection' | FROM: vendorData
-        const vendorData = file.vendorData;
+        const gLData = vendorData.relevant_gls.values;
+        const currency = vendorData.currency.values;
+        const pdfDoc = await PDFDocument.load(templateData);
+        const form = pdfDoc.getForm()
+        form.getFields().forEach((field) => {
+            console.log(`${field.getName()} | Type: ${field.constructor.name}`);
+        });
+        const dateNow = `${new Date().getDate()}-${new Date()
+            .toLocaleDateString("en-US", { month: "short" })
+            .toUpperCase()}`
+        const dataMap: Record<string, string> = {
+            FIELD_vendorNumber: vendorData?.vendorEmpNumber?.values,
+            FIELD_vendorName: vendorData?.vendorEmpName?.values,
+            FIELD_invoiceDate: processedData["invoice_date"],
+            FIELD_invoiceNumber: processedData["invoice_number"],
+            FIELD_costCentre: vendorData?.costCentre?.values,
+            FIELD_province: vendorData?.taxValue?.province,
+            FIELD_subtotal: processedData["subtotal"],
+            FIELD_primaryTax: vendorData?.taxValue?.gstType,
+            FIELD_secondaryTax: vendorData?.taxValue?.pstType,
+            FIELD_taxValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate)).toFixed(2),
+            FIELD_totalValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate) + parseFloat(processedData["subtotal"].replace(/,/g, ''))).toFixed(2),
 
-        // * PULL: | 'approval_date ✅' | from local calculations
-        const dateNow = `${new Date().getDate()}-${new Date().toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}`;
+            // TODO: CHECKBOX_cad or CHECKBOX_usd depending on vendor
+            // TODO: approvalDate doesn't work
+            // ! FIELD_poValue: processedData["po_number"] needs human intervention + accuracy updates
+        }
+        form.getFields().forEach((field) => {
+            const name = field.getName();
+            if (dataMap[name]) {
+                try {
+                    form.getTextField(name).setText(String(dataMap[name] ?? ''));
+                } catch {
+                    try {
+                        form.getDropdown(name).select(String(dataMap[name] ?? ''));
+                    } catch (err) {
+                        showNotification('System', `Could not set field ${name}:`, 'error')
+                        console.warn(`Could not set field ${name}:`, err);
+                    }
+                }
+            }
+        });
+        if (currency === 'CAD') {
+            form.getCheckBox('CHECKBOX_cad').check();
+        } else if (currency === 'USD') {
+            form.getCheckBox('CHECKBOX_usd').check();
+        }
+        // TODO: this should be a function used to handle multi-row/column systems
+        gLData.forEach((gl: any, index: number) => {
+            const row = index + 1;
+            const { description, gl_account, cost_centre } = gl.columns;
+            form.getTextField(`GL_A${row}:A${row}`).setText(description.value ?? '');
+            form.getTextField(`GL_A${row}:B${row}`).setText(gl_account.value ?? '');
+            form.getTextField(`GL_A${row}:C${row}`).setText(cost_centre.value ?? '');
+            form.getTextField(`GL_A${row}:D${row}`).setText(processedData["subtotal"] ?? '');
+        });
 
-        // TODO: RETURN pdf file blob if successful + save it to current getUploadedFile object index and updates sessionStorage OR RETURN 'Please select a template' OR RETURN null
+        form.flatten()
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${vendorData?.vendorEmpName?.values?.replace(/ /g, '_')}-${processedData["invoice_number"]}`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     const downloadQueue = async () => {
         // TODO: this is the download processor that layers on top of our pre-processor
+        // TODO: from how I pull the data to how I use it in the form fields, is all entirely hard coded. Which will need improvement later on
         null
     }
 
@@ -802,29 +877,6 @@ export default function Page() {
         });
     }
 
-    // * CONSOLE COMMANDS ----------------------------------------
-    const runTest = async (data: any) => {
-        null
-    }
-    const getUploaded = async () => {
-        console.log(`${JSON.stringify(getUploadedFiles, null, 2)}`)
-    }
-    const logSession = async () => {
-        console.log(JSON.stringify(
-            Object.fromEntries(Object.keys(sessionStorage).map(key => [key, sessionStorage.getItem(key)])),
-            null,
-            2
-        ));
-        console.log(JSON.parse(sessionStorage.getItem('vendorId') ?? '{}'))
-    };
-    useEffect(() => {
-        (window as any).dev = {
-            getUploaded,
-        };
-    }, [getUploadedFiles]);
-    // * CONSOLE COMMANDS ----------------------------------------
-
-
     // * SELECTION ALGO
     const [getIsSelected, setIsSelected] = useState<number[]>([]);
     const [getFilePreview, setFilePreview] = useState(false);
@@ -952,6 +1004,34 @@ export default function Page() {
         if (savedBundle) { setItems(JSON.parse(savedBundle)); }
     }, []);
     // ! HOT RELOAD ----------------------------------------
+
+
+    // * CONSOLE COMMANDS ----------------------------------------
+    const runTest = async (data: any) => {
+        //getTemplates();
+        generateTemplateSheet(getUploadedFiles[2], getTemplate[0])
+    }
+    const getUploaded = async () => {
+        console.log(`${JSON.stringify(getUploadedFiles, null, 2)}`)
+    }
+    const getTemplates = async () => {
+        console.log(`${JSON.stringify(getTemplate, null, 2)}`)
+    }
+    const logSession = async () => {
+        console.log(JSON.stringify(
+            Object.fromEntries(Object.keys(sessionStorage).map(key => [key, sessionStorage.getItem(key)])),
+            null,
+            2
+        ));
+        console.log(JSON.parse(sessionStorage.getItem('vendorId') ?? '{}'))
+    };
+    useEffect(() => {
+        (window as any).dev = {
+            getUploaded,
+            generateTemplateSheet: () => generateTemplateSheet(getUploadedFiles[2], 2),
+        };
+    }, [getUploadedFiles, getIsSelected]);
+    // * CONSOLE COMMANDS ----------------------------------------
 
 
     return (
