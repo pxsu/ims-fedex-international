@@ -1,3 +1,7 @@
+export const dynamic = 'force-dynamic';
+
+import 'canvas';
+import { PDFDocument } from 'pdf-lib';
 import { Dispatch, SetStateAction } from "react";
 import { renderSkeleton } from "@/app/handlers/drag-n-drop/skeletons";
 import { showNotification, Notification } from "@/app/handlers/notifications/notifcations";
@@ -5,9 +9,8 @@ import { convertFileToBase64 } from "@/app/utilities/crossplatform";
 import { processDbRequests } from "../invoice-processor/processdb";
 import { vendorMatch } from "../smart-query/query";
 import { generateTemplateSheet, getSelectedTemplate } from "../excel-handler/processxlsx";
-import { PDFDocument } from 'pdf-lib';
 
-export const handleDragOver = (
+export const handleDragOver = async (
     e: React.DragEvent<HTMLElement>,
     setIsDragging: Dispatch<SetStateAction<boolean>>,
 ) => {

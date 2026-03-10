@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 // Drag n' Drop
 import { handleDragOver, handleDragLeave, handleDrop, clearUploadedFiles, setDownloadData, setDownloadDataAll } from "@/app/handlers/drag-n-drop/dragDrop";
 import DownloadModal from "./handlers/drag-n-drop/DownloadModal";
@@ -24,8 +26,8 @@ import InsertModal from "@/app/utilities/InsertModal";
 // Learning algorithm
 import { learnAlias } from "@/app/handlers/smart-query/query";
 
-import { pdfjs } from "react-pdf";
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// For the PDF library
+import 'canvas';
 
 export default function Page() {
 
@@ -385,7 +387,7 @@ export default function Page() {
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-green-400">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                                                         </svg>
-                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected,  getActiveIndex, getIsSelected, items, true) }} className="text-green-400 gap-1 hover:underline cursor-pointer">Download?</button>
+                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, items, true) }} className="text-green-400 gap-1 hover:underline cursor-pointer">Download?</button>
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-col items-left w-full">
@@ -482,7 +484,7 @@ export default function Page() {
                             </div>
                         </div>
                         {getUploadedFiles.length > 0 ? (
-                            <button onClick={() => setDownloadDataAll(getUploadedFiles, getTemplate, setNotifications, setUploadedFiles, setIsSelected,  getActiveIndex, getIsSelected, items) } className="transition-all p-3 px-6 text-white rounded-xl cursor-pointer bg-orange-400 hover:text-orange-400 hover:outline-orange-400 hover:bg-transparent hover:outline-2 h-14">Download All</button>
+                            <button onClick={() => setDownloadDataAll(getUploadedFiles, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, items)} className="transition-all p-3 px-6 text-white rounded-xl cursor-pointer bg-orange-400 hover:text-orange-400 hover:outline-orange-400 hover:bg-transparent hover:outline-2 h-14">Download All</button>
                         ) : (
                             <button disabled className="hidden transition-all p-3 px-6 h-14 text-white rounded-xl cursor-not-allowed bg-indigo-200 opacity-50">Download All</button>
                         )}

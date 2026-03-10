@@ -1,12 +1,15 @@
+export const dynamic = 'force-dynamic';
+
 import { Dispatch, SetStateAction } from "react";
 import { showNotification, Notification } from "../notifications/notifcations";
-import { pdfjs } from "react-pdf";
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import 'canvas';
 
 const processInvoice = async (
     base64: string
 ) => {
-    console.log(`BASE64 DATA: ${base64}`)
+    const { pdfjs } = await import('react-pdf');
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
     const pdfData = atob(base64.split(',')[1]);
     const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
     const pages: string[] = [];
