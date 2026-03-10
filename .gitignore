@@ -15,6 +15,7 @@
 
 # firebase
 .firebase/
+.env.local
 
 # next.js
 /.next/
