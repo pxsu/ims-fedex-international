@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# firebase
+.firebase/
+
 # next.js
 /.next/
 /out/
