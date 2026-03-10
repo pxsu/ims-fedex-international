@@ -158,7 +158,7 @@ export default function Page() {
                     />
                 )}
                 <NotificationComponent notifications={getNotifications} onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
-                {getShowTemplateModal && (<TemplateModal setShowTemplateModal={setShowTemplateModal} setTemplate={setTemplate} getTemplate={getTemplate} />)}
+                {getShowTemplateModal && (<TemplateModal setShowTemplateModal={setShowTemplateModal} setTemplate={setTemplate} getTemplate={getTemplate} setNotifications={setNotifications} />)}
                 {getShowVendorModal && (
                     <VendorModal setShowVendorModal={setShowVendorModal} setIsDraggingExcel={setIsDraggingExcel} setNotifications={setNotifications} setProcessedFileData={setProcessedFileData} setExcelModal={setExcelModal} getIsDraggingExcel={getIsDraggingExcel} />
                 )}
@@ -259,7 +259,7 @@ export default function Page() {
                                 () => {
                                     console.log('items: ', JSON.stringify(getUploadedFiles, null, 2));
                                 }
-                            } className=" bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">
+                            } className="hidden bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">
                                 runTest
                             </button>
                             <button onClick={() => { null }} className="hidden bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">Get Uploaded</button>
@@ -280,9 +280,9 @@ export default function Page() {
                                             <span className="text-sm text-white block text-center">List of available databases</span>
                                             <div className="flex flex-col gap-1">
                                                 {MAX_VISIBLE && (
-                                                    <div className="mb-1 bg-white py-2 px-4 rounded-lg hover:bg-indigo-400 cursor-pointer">
+                                                    <div className="mb-1 bg-white text-black py-2 px-4 rounded-lg hover:bg-violet-200 cursor-pointer">
                                                         <div className="flex justify-between items-center">
-                                                            <div className="text-md text-black">FedEx</div>
+                                                            <div className="text-md">FedEx</div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -307,7 +307,7 @@ export default function Page() {
                     onDragOver={(e) => handleDragOver(e, setIsDragging)}
                     onDragLeave={(e) => handleDragLeave(e, setIsDragging)}
                     onDrop={(e) => handleDrop(e, getUploadedFiles, setUploadedFiles, setNotifications, setIsDragging)}
-                    className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-gray-200'}`}>
+                    className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-neutral-100'}`}>
                     <div className="flex flex-col justify-between h-full w-full">
                         <div className="flex justify-center items-center gap-2 h-full">
                             <div className="px-6 py-3 rounded-lg flex items-center gap-2 flex flex-col">

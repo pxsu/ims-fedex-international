@@ -182,7 +182,7 @@ export const navigateExcelPage = (
     }
 };
 export const handleTemplate = async (
-    getTemplate: Dispatch<SetStateAction<any[]>>,
+    getTemplate: any[],
     setTemplate: Dispatch<SetStateAction<any[]>>,
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
 ) => {
