@@ -21,7 +21,7 @@ export default function VendorModal(
         getIsDraggingExcel
     }: VendorModalProp) {
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[9999]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50">
             <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">

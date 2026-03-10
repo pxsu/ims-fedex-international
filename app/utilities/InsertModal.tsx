@@ -5,6 +5,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { Notification } from '@/app/handlers/notifications/notifcations';
 import { validateBundleItems, addToBundle, saveBundle } from './bundle-sorter';
 
+import { getBundleStatus } from "./bundle-sorter";
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { removeItem } from "./bundle-sorter";
@@ -52,7 +53,7 @@ export default function InsertModal({
         );
     }
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[9999]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50">
             <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">
@@ -69,7 +70,7 @@ export default function InsertModal({
                     </div>
                     <div className="flex gap-3">
                         <div
-                            className="flex items-center justify-center text-black cursor-pointer hover:text-red-400"
+                            className="flex items-center justify-center text-black transition-all cursor-pointer hover:text-black/40"
                             onClick={() => validateBundleItems(setItems)}>
                             Reset
                         </div>
