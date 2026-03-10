@@ -1,5 +1,3 @@
-export const dynamic = 'force-dynamic';
-
 import { Dispatch, SetStateAction } from "react";
 import { showNotification, Notification } from "../notifications/notifcations";
 import 'canvas';

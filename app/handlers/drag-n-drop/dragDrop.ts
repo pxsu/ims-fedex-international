@@ -1,5 +1,3 @@
-export const dynamic = 'force-dynamic';
-
 import 'canvas';
 import { PDFDocument } from 'pdf-lib';
 import { Dispatch, SetStateAction } from "react";
