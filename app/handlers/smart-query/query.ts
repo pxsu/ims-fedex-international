@@ -27,27 +27,6 @@ export const fuzzyScore = (input: string, candidate: string): number => {
     const maxLen = Math.max(a.length, b.length);
     return 1 - distance / maxLen;
 };
-export const smartQuery = async (inputQuery: string, companyId: string) => {
-    const vendors = await getDocs(query(collection(db, companyId, 'query', 'vendor_data')));
-    const results = vendors.docs.map(doc => {
-        const data = doc.data();
-        const canonicalScore = fuzzyScore(inputQuery, data.canonicalName);
-        const aliasScore = data.aliases?.length ? Math.max(...data.aliases.map((alias: string) => fuzzyScore(inputQuery, alias))) : 0;
-        const finalScore = Math.max(canonicalScore, aliasScore);
-        return {
-            vendorId: doc.id,
-            canonicalName: data.canonicalName,
-            score: finalScore
-        };
-    });
-    const ranked = results
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 5);
-    if (ranked[0].score > 0.85) {
-        return { status: 'AUTO_RESOLVED', match: ranked[0] };
-    }
-    return { status: 'NEEDS_RESOLUTION', candidates: ranked };
-}
 export const resolutionLog = async (
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     {
@@ -104,7 +83,7 @@ export const promoteAlias = async (
                 aliases: arrayUnion(rawInput.toLowerCase().trim()),
                 updatedAt: new Date(),
             });
-            showNotification('System', setNotifications, `promoted "${rawInput}" to alias of ${parentId} after ${seenCount} resolutions`, 'error');
+            showNotification('System', setNotifications, `${rawInput} is now a known alias of ${parentId} after being seen ${seenCount} times now`, 'success');
         }
     } catch (error) {
         showNotification('System', setNotifications, `promoteAlias says ${error}`, 'error');
@@ -113,7 +92,9 @@ export const promoteAlias = async (
 export const learnAlias = async (
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
-    setPreviewState: Dispatch<SetStateAction<'loading' | 'idle'>>,
+    setResolveState: Dispatch<SetStateAction<'loading' | 'idle'>>,
+    setResolveModal: Dispatch<SetStateAction<boolean>>,
+    setActiveIndex: Dispatch<SetStateAction<number>>,
     {
         companyId,
         parentId,
@@ -133,6 +114,7 @@ export const learnAlias = async (
     }
 ) => {
     try {
+        setResolveState('loading');
         const childRef = collection(db, companyId, 'query', 'vendor_data', parentId, 'invoice_data');
         await addDoc(childRef, {
             parentId,
@@ -180,16 +162,38 @@ export const learnAlias = async (
             sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
             return updated;
         });
-        setPreviewState('idle');
+        setResolveState('idle');
+        setResolveModal(false);
+        setActiveIndex(0);
         showNotification('System', setNotifications, `Manually resolved to ${parentId}`, 'success');
     } catch (error) {
         showNotification('System', setNotifications, `learnAlias says: ${error}`, 'error');
     }
 };
+export const smartQuery = async (inputQuery: string, companyId: string) => {
+    const vendors = await getDocs(query(collection(db, companyId, 'query', 'vendor_data')));
+    const results = vendors.docs.map(doc => {
+        const data = doc.data();
+        const canonicalScore = fuzzyScore(inputQuery, data.canonicalName);
+        const aliasScore = data.aliases?.length ? Math.max(...data.aliases.map((alias: string) => fuzzyScore(inputQuery, alias))) : 0;
+        const finalScore = Math.max(canonicalScore, aliasScore);
+        return {
+            vendorId: doc.id,
+            canonicalName: data.canonicalName,
+            score: finalScore
+        };
+    });
+    const ranked = results
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+    if (ranked[0].score > 0.85) {
+        return { status: 'AUTO_RESOLVED', match: ranked[0] };
+    }
+    return { status: 'NEEDS_RESOLUTION', candidates: ranked };
+}
 export const vendorMatch = async (
     index: number,
     fileData: any,
-    getUploadedFiles: any[],
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
 ) => {
@@ -205,7 +209,7 @@ export const vendorMatch = async (
                 confidence: result.match.score,
                 wasManual: false,
                 resolvedBy: 'system',
-                invoiceFile: getUploadedFiles[index].unProcessedData,
+                invoiceFile: fileData.unProcessedData,
             });
             await promoteAlias(setNotifications, {
                 companyId: activeCompanyId,
@@ -218,6 +222,7 @@ export const vendorMatch = async (
                 const updated = [...prev];
                 updated[index] = {
                     ...updated[index],
+                    state: 'file_object',
                     resolution: {
                         status: 'AUTO_RESOLVED',
                         vendorId: result.match.vendorId,
@@ -235,6 +240,7 @@ export const vendorMatch = async (
                 const updated = [...prev];
                 updated[index] = {
                     ...updated[index],
+                    state: 'file_object',
                     resolution: {
                         status: 'NEEDS_RESOLUTION',
                         candidates: result.candidates,
