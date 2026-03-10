@@ -233,7 +233,7 @@ export const getSelectedTemplate = (
     return getTemplate.find(t => t.selected === true);
 };
 export const selectTemplate = (
-    file: any, 
+    file: any,
     i: number,
     setTemplate: Dispatch<SetStateAction<any[]>>,
 ) => {
@@ -257,13 +257,13 @@ export const removeTemplate = (
     });
 };
 export const generateTemplateSheet = async (
-    file: any, 
+    file: any,
     template: any,
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
     getIsSelected: number[],
 ) => {
-    const base64Data = template.replace(/^data:application\/pdf;base64,/, '');
+    const base64Data = template[0].data.replace(/^data:application\/pdf;base64,/, '');
     const templateData = await base64Data;
     let processedData: any;
     let vendorData: any;
@@ -285,9 +285,6 @@ export const generateTemplateSheet = async (
     const currency = vendorData.currency.values;
     const pdfDoc = await PDFDocument.load(templateData);
     const form = pdfDoc.getForm()
-    form.getFields().forEach((field) => {
-        console.log(`${field.getName()} | Type: ${field.constructor.name}`);
-    });
     const dateNow = `${new Date().getDate()}-${new Date()
         .toLocaleDateString("en-US", { month: "short" })
         .toUpperCase()}`
@@ -303,7 +300,7 @@ export const generateTemplateSheet = async (
         FIELD_secondaryTax: vendorData?.taxValue?.pstType,
         FIELD_taxValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate)).toFixed(2),
         FIELD_totalValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate) + parseFloat(processedData["subtotal"].replace(/,/g, ''))).toFixed(2),
-        // TODO: approvalDate doesn't work
+        FIELD_approvalDate: dateNow,
         // ! FIELD_poValue: processedData["po_number"] needs human intervention + accuracy updates
     }
     form.getFields().forEach((field) => {
@@ -334,31 +331,14 @@ export const generateTemplateSheet = async (
         form.getTextField(`GL_A${row}:C${row}`).setText(cost_centre.value ?? '');
         form.getTextField(`GL_A${row}:D${row}`).setText(processedData["subtotal"] ?? '');
     });
-    form.flatten()
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
     const generatedFileName = `${vendorData?.vendorEmpName?.values?.replace(/ /g, '_')}-${processedData["invoice_number"]}`;
-    const base64 = await convertFileToBase64(new File([blob], generatedFileName, { type: 'application/pdf' }));
     const returnData = {
         finalDownload: {
-            fileBlob: blob,
+            file: blob,
             generatedFileName,
-            downloadReady: true
         }
     }
-    setUploadedFiles(prev => {
-        const updated = [...prev];
-        updated[getIsSelected[0]] = {
-            ...updated[getIsSelected[0]],
-            returnData
-        };
-        const sessionData = [...updated];
-        sessionData[getIsSelected[0]] = {
-            ...sessionData[getIsSelected[0]],
-            returnData
-        };
-        sessionStorage.setItem('uploadedFiles', JSON.stringify(sessionData));
-        return updated;
-    });
     return returnData;
 };

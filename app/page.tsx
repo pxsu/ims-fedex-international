@@ -1,7 +1,7 @@
 'use client';
 
 // Drag n' Drop
-import { handleDragOver, handleDragLeave, handleDrop, clearUploadedFiles } from "@/app/handlers/drag-n-drop/dragDrop";
+import { handleDragOver, handleDragLeave, handleDrop, clearUploadedFiles, setDownloadData, setDownloadDataAll } from "@/app/handlers/drag-n-drop/dragDrop";
 import DownloadModal from "./handlers/drag-n-drop/DownloadModal";
 import FilePreviewModal from "./handlers/drag-n-drop/FilePreviewModal";
 
@@ -21,6 +21,9 @@ import { useState, useEffect } from "react";
 import { getBundleStatus } from "./utilities/bundle-sorter";
 import InsertModal from "@/app/utilities/InsertModal";
 
+// Learning algorithm
+import { learnAlias } from "@/app/handlers/smart-query/query";
+
 import { pdfjs } from "react-pdf";
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -33,6 +36,7 @@ export default function Page() {
     const [isDragging, setIsDragging] = useState(false);
     const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
+    const [getResolveModal, setResolveModal] = useState<boolean>(false);
 
     // Template states
     const [getTemplate, setTemplate] = useState<any[]>([]);
@@ -47,14 +51,15 @@ export default function Page() {
     const [getSubmissionIndex, setSubmissionIndex] = useState<any[]>([]);
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'exists'>('idle');
     const [getCanvasState, setCanvasState] = useState<'idle' | 'loading'>('idle');
-    const [getDownloadData, setDownloadData] = useState<any[]>([]);
     const [getCurrentDownloadIndex, setCurrentDownloadIndex] = useState(0);
 
     // SELECTION ALGO
     const [getIsSelected, setIsSelected] = useState<number[]>([]);
+    const [getActiveIndex, setActiveIndex] = useState(0);
     const [getFilePreview, setFilePreview] = useState(false);
     const [getPreviewIndex, setPreviewIndex] = useState<number | null>(null);
     const [getPreviewState, setPreviewState] = useState<'loading' | 'idle'>('idle');
+    const [getResolveState, setResolveState] = useState<'loading' | 'idle'>('idle');
     const [getInsertModal, setInsertModal] = useState(false)
     const [items, setItems] = useState<{
         position: string;
@@ -62,7 +67,7 @@ export default function Page() {
         label: string;
         parent: boolean;
         size: number;
-        content: string | null;
+        content: string | null; // ! BASE64 ITEM
     }[]>([
         { position: '1', id: '1', label: 'Invoice', parent: true, size: 0, content: null },
         { position: '2', id: '2', label: 'Cover Sheet', parent: true, size: 0, content: null },
@@ -78,7 +83,6 @@ export default function Page() {
     const [getSetDbLock, setSetDbLock] = useState(true);
     const [getDbSelection, setDbSelection] = useState(false);
     const MAX_VISIBLE = 5;
-
 
     // Save memory after browser refresh
     useEffect(() => {
@@ -138,7 +142,6 @@ export default function Page() {
     return (
         <>
             <main data-section="whole page" className="bg-white text-black h-screen flex flex-col">
-                
                 {getExcelModal && (
                     <ExcelModal
                         getProcessedFileData={getProcessedFileData}
@@ -158,9 +161,6 @@ export default function Page() {
                 {getShowTemplateModal && (<TemplateModal setShowTemplateModal={setShowTemplateModal} setTemplate={setTemplate} getTemplate={getTemplate} />)}
                 {getShowVendorModal && (
                     <VendorModal setShowVendorModal={setShowVendorModal} setIsDraggingExcel={setIsDraggingExcel} setNotifications={setNotifications} setProcessedFileData={setProcessedFileData} setExcelModal={setExcelModal} getIsDraggingExcel={getIsDraggingExcel} />
-                )}
-                {getShowDownloadModal && (
-                    <DownloadModal setShowDownloadModal={setShowDownloadModal} getDownloadData={getDownloadData} getCurrentDownloadIndex={getCurrentDownloadIndex} setNotifications={setNotifications} />
                 )}
                 {getFilePreview && getPreviewIndex !== null && (
                     <FilePreviewModal
@@ -184,13 +184,84 @@ export default function Page() {
                         setItems={setItems}
                     />
                 )}
+                {getResolveModal && getResolveState === 'idle' ? (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[9999]">
+                        <div className="flex flex-col items-center h-[90vh] w-[480px] bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
+                            <div className="w-full flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-8 fill-amber-400">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                                </svg>
+                                <span className="text-white text-sm font-medium tracking-wide">{`"${getUploadedFiles[getIsSelected[0]]?.processedData?.["vendor_name"] ?? "Unknown Vendor"}"`}</span>
+                                <button
+                                    onClick={() => { setResolveModal(false); setIsSelected([]); setActiveIndex(0); }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white/50 text-xs hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div className="text-neutral-400 text-sm w-full px-4 mt-4">
+                                <span>Who is the correct vendor?</span>
+                            </div>
+                            <div className="flex flex-col text-neutral-300 w-full px-4 py-4 gap-3">
+                                {getUploadedFiles[getActiveIndex]?.resolution?.candidates?.map((candidate: any, i: number) => (
+                                    <div
+                                        key={i}
+                                        onClick={() => {
+                                            learnAlias(
+                                                setNotifications,
+                                                setUploadedFiles,
+                                                setResolveState,
+                                                setResolveModal,
+                                                setActiveIndex,
+                                                {
+                                                    companyId: "FedEx",
+                                                    parentId: candidate.vendorId,
+                                                    rawInput: getUploadedFiles[getActiveIndex].resolution.rawInput,
+                                                    confidence: candidate.score,
+                                                    invoiceFile: getUploadedFiles[getActiveIndex].unProcessedData,
+                                                    processedData: getUploadedFiles[getActiveIndex].processedData,
+                                                    index: getActiveIndex,
+                                                });
+                                        }}
+                                        className="flex justify-center bg-neutral-600 rounded-md px-2 py-4 outline-2 outline-neutral-500 cursor-pointer hover:bg-green-300 hover:outline-green-400 hover:text-green-800 transition-all">
+                                        <div className="w-full flex justify-around items-center gap-2">
+                                            <span className="text-left flex-1">{candidate.canonicalName}</span>
+                                            <span className="text-white/50">{(candidate.score * 100).toFixed(1)}% likely</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ) : getResolveModal && getResolveState === 'loading' && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[9999]">
+                        <div className="flex flex-col items-center h-[90vh] w-[480px] bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
+                            <div className="w-full flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-8 fill-amber-400">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                                </svg>
+                                <span className="text-white text-sm font-medium tracking-wide">{`Loading...`}</span>
+                            </div>
+                            <div className="flex w-full h-full justify-center items-center">
+                                <div className="animate-spin rounded-full w-32 h-32 border-[3px] border-gray-200 border-t-indigo-400" />
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div className="relative">
                     <nav className="select-none flex gap-2 justify-between bg-white p-2 px-8 items-center h-14">
                         <div className="w-4 h-full">
                             <button onClick={() => window.location.href = '/'} className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(51.1_0.262_276.96)] transition-all cursor-pointer">ims</button>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => { showNotification('System', setNotifications, 'message', 'info') }} className=" bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">runTest</button>
+                            <button onClick={
+                                () => {
+                                    console.log('items: ', JSON.stringify(getUploadedFiles, null, 2));
+                                }
+                            } className=" bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">
+                                runTest
+                            </button>
                             <button onClick={() => { null }} className="hidden bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">Get Uploaded</button>
                         </div>
                     </nav>
@@ -257,9 +328,10 @@ export default function Page() {
                                     const isSelected = getIsSelected.includes(index);
                                     const baseClass = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-indigo-400 ${isSelected ? 'outline-2 outline-indigo-400' : ''}`;
                                     const needAttention = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-amber-400 ${isSelected ? 'outline-2 outline-amber-400' : ''}`;
+                                    const downloadClass = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-green-400 ${isSelected ? 'outline-2 outline-green-400' : ''}`;
                                     if (file.state === "skeleton") {
                                         return (
-                                            <div className={baseClass} key={index} onClick={() => setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index])}>
+                                            <div className={baseClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
                                                 <div className="animate-spin rounded-full w-32 h-32 border-[3px] border-gray-200 border-t-indigo-400" />
                                                 <div className="flex flex-col items-left w-full gap-1">
                                                     <div className="text-gray-400 text-[10px] sm:text-xs md:text-sm animate-pulse w-full bg-neutral-200 h-5 rounded"></div>
@@ -269,14 +341,17 @@ export default function Page() {
                                         );
                                     } else if (file.resolution?.status === 'AUTO_RESOLVED' && file.state === 'file_object') {
                                         return (
-                                            <div className={baseClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); }}>
+                                            <div className={downloadClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
                                                 <div className="flex-1 flex items-center justify-center">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-14 h-14 text-gray-400">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                                    </svg>
+                                                    <div className="flex flex-col text-black">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-green-400">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                        </svg>
+                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, items, true) }} className="text-green-400 gap-1 hover:underline cursor-pointer">Download?</button>
+                                                    </div>
                                                 </div>
                                                 <div className="flex flex-col items-left w-full">
-                                                    <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.processedData["vendor_name"]}</span>
+                                                    <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.vendorData?.canonicalName}</span>
                                                     <div className="flex gap-1">
                                                         <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
                                                     </div>
@@ -285,11 +360,14 @@ export default function Page() {
                                         );
                                     } else if (file.resolution?.status === 'NEEDS_RESOLUTION' && file.state === 'file_object') {
                                         return (
-                                            <div className={needAttention} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); }}>
+                                            <div className={needAttention} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
                                                 <div className="flex-1 flex items-center justify-center">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1" stroke="currentColor" className="w-16 h-16 text-amber-400">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                                                    </svg>
+                                                    <div className="flex flex-col text-black">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-amber-400">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                                                        </svg>
+                                                        <button onClick={() => { setResolveModal(true) }} className="text-amber-400 gap-1 hover:underline cursor-pointer">Resolve?</button>
+                                                    </div>
                                                 </div>
                                                 <div className="flex flex-col items-left w-full">
                                                     <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{`${file.processedData["vendor_name"]}`}</span>
@@ -301,23 +379,22 @@ export default function Page() {
                                         );
                                     } else if (file.resolution?.status === 'MANUAL_RESOLVED' && file.state === 'file_object') {
                                         return (
-                                            <>
-                                                <div className="flex flex-col gap-2">
-                                                    <div className={baseClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); }}>
-                                                        <div className="flex-1 flex items-center justify-center">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-14 h-14 text-gray-400">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                                            </svg>
-                                                        </div>
-                                                        <div className="flex flex-col items-left w-full">
-                                                            <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.vendorData?.canonicalName}</span>
-                                                            <div className="flex gap-1">
-                                                                <span className="text-green-500 text-[10px] sm:text-xs md:text-xs">Ready to download</span>
-                                                            </div>
-                                                        </div>
+                                            <div className={downloadClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
+                                                <div className="flex-1 flex items-center justify-center">
+                                                    <div className="flex flex-col text-black">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-green-400">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                        </svg>
+                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected,  getActiveIndex, getIsSelected, items, true) }} className="text-green-400 gap-1 hover:underline cursor-pointer">Download?</button>
                                                     </div>
                                                 </div>
-                                            </>
+                                                <div className="flex flex-col items-left w-full">
+                                                    <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.vendorData?.canonicalName}</span>
+                                                    <div className="flex gap-1">
+                                                        <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         );
                                     }
                                 })}
@@ -330,7 +407,7 @@ export default function Page() {
                         <span>{`${getUploadedFiles.length} files added`}</span>
                         <span>|</span>
                         <button
-                            onClick={() => { clearUploadedFiles }}
+                            onClick={() => { clearUploadedFiles(setUploadedFiles, setProcessedFileData, setIsSelected, setActiveIndex) }}
                             className="text-black cursor-pointer">
                             <div className="flex items-center hover:text-red-400">
                                 <span>clear</span>
@@ -405,9 +482,9 @@ export default function Page() {
                             </div>
                         </div>
                         {getUploadedFiles.length > 0 ? (
-                            <button onClick={() => null} className="transition-all p-3 px-6 text-white rounded-xl cursor-pointer bg-orange-400 hover:text-orange-400 hover:outline-orange-400 hover:bg-transparent hover:outline-2 h-14">Download</button>
+                            <button onClick={() => setDownloadDataAll(getUploadedFiles, getTemplate, setNotifications, setUploadedFiles, setIsSelected,  getActiveIndex, getIsSelected, items) } className="transition-all p-3 px-6 text-white rounded-xl cursor-pointer bg-orange-400 hover:text-orange-400 hover:outline-orange-400 hover:bg-transparent hover:outline-2 h-14">Download All</button>
                         ) : (
-                            <button disabled className="transition-all p-3 px-6 h-14 text-white rounded-xl cursor-not-allowed bg-indigo-200 opacity-50">Download</button>
+                            <button disabled className="hidden transition-all p-3 px-6 h-14 text-white rounded-xl cursor-not-allowed bg-indigo-200 opacity-50">Download All</button>
                         )}
                     </div>
                 </section>
