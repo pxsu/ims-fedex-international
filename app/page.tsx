@@ -254,16 +254,6 @@ export default function Page() {
                         <div className="w-4 h-full">
                             <button onClick={() => window.location.href = '/'} className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(51.1_0.262_276.96)] transition-all cursor-pointer">ims</button>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={
-                                () => {
-                                    console.log('items: ', JSON.stringify(getUploadedFiles, null, 2));
-                                }
-                            } className=" bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">
-                                runTest
-                            </button>
-                            <button onClick={() => { null }} className="hidden bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">Get Uploaded</button>
-                        </div>
                     </nav>
                     <nav className="absolute select-none inset-x-0 top-1 flex justify-center items-start pointer-events-none pt-2">
                         <div className="flex flex-col">
