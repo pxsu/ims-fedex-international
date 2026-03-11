@@ -20,7 +20,9 @@ interface FilePreviewModalProps {
         parent: boolean;
         size: number;
         content: string | null;
-    }[]
+    }[],
+    setResolveModal: Dispatch<SetStateAction<boolean>>,
+    setActiveIndex: Dispatch<SetStateAction<number>>,
 }
 export default function FilePreviewModal(
     {
@@ -33,7 +35,9 @@ export default function FilePreviewModal(
         setNotifications,
         setUploadedFiles,
         getTemplate,
-        items
+        items,
+        setResolveModal,
+        setActiveIndex
     }: FilePreviewModalProps) {
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50">
@@ -105,6 +109,8 @@ export default function FilePreviewModal(
                                                             setNotifications,
                                                             setUploadedFiles,
                                                             setPreviewState,
+                                                            setResolveModal,
+                                                            setActiveIndex,
                                                             {
                                                                 companyId: "FedEx",
                                                                 parentId: candidate.vendorId,
@@ -115,7 +121,7 @@ export default function FilePreviewModal(
                                                                 index: getIsSelected[0],
                                                             }
                                                         );
-                                                        generateTemplateSheet(file, getTemplate, setNotifications, setUploadedFiles, getIsSelected);
+                                                        generateTemplateSheet(file, getTemplate, setNotifications);
                                                     }} className="flex justify-center bg-neutral-600 rounded-md px-2 py-4 outline-2 outline-neutral-500 cursor-pointer hover:bg-green-300 hover:outline-green-400 hover:text-green-800 transition-all">
                                                         {candidate.canonicalName}
                                                     </div>

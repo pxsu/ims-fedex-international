@@ -170,6 +170,8 @@ export default function Page() {
                         setUploadedFiles={setUploadedFiles}
                         getTemplate={getTemplate}
                         items={items}
+                        setResolveModal={setResolveModal}
+                        setActiveIndex={setActiveIndex}
                     />
                 )}
                 {getInsertModal && (

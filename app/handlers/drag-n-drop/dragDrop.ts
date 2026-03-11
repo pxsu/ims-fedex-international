@@ -1,4 +1,3 @@
-import 'canvas';
 import { PDFDocument } from 'pdf-lib';
 import { Dispatch, SetStateAction } from "react";
 import { renderSkeleton } from "@/app/handlers/drag-n-drop/skeletons";
@@ -6,7 +5,7 @@ import { showNotification, Notification } from "@/app/handlers/notifications/not
 import { convertFileToBase64 } from "@/app/utilities/crossplatform";
 import { processDbRequests } from "../invoice-processor/processdb";
 import { vendorMatch } from "../smart-query/query";
-import { generateTemplateSheet, getSelectedTemplate } from "../excel-handler/processxlsx";
+import { generateTemplateSheet } from "../excel-handler/processxlsx";
 
 export const handleDragOver = async (
     e: React.DragEvent<HTMLElement>,

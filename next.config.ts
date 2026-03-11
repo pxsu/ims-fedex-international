@@ -11,8 +11,8 @@ const nextConfig: NextConfig = {
       },
     ]
   },
-  typescript: {
-    ignoreBuildErrors: true,
+  experimental: {
+    serverComponentsExternalPackages: ['canvas', 'pdfjs-dist'],
   },
 };
 

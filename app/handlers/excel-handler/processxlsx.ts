@@ -1,4 +1,3 @@
-import 'canvas'
 import { Dispatch, SetStateAction } from "react";
 import { convertFileToBase64 } from "@/app/utilities/crossplatform";
 import * as XLSX from 'xlsx';

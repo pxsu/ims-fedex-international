@@ -36,7 +36,7 @@ export default function TemplateModal(
                     </div>
                 </div>
                 <div className="flex flex-col h-full w-200">
-                    <div className="flex flex-col gap-4 mb-4">
+                    <div className="flex flex-col gap-2 mb-2">
                         {getTemplate.length > 0 ? (
                             getTemplate.map((file: File, i: number) => (
                                 <div key={i} className="bg-violet-200 outline-2 outline-violet-400 rounded-xl w-full flex justify-between items-center h-12 py-2 px-4 ">
@@ -52,7 +52,7 @@ export default function TemplateModal(
                         {getTemplate.length > 0 && getTemplate.map((file, i) => (
                             <div key={i}>
                                 <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js" >
-                                    <Viewer fileUrl={file.data} />
+                                    <Viewer fileUrl={file.data} defaultScale={0.8}/>
                                 </Worker>
                             </div>
                         ))}
