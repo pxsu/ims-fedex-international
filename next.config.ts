@@ -14,7 +14,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  serverExternalPackages: ['canvas']
 };
 
 export default nextConfig;

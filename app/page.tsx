@@ -458,7 +458,7 @@ export default function Page() {
                                     </div>
                                 );
                             })()}
-                            <div className="flex flex-col justify-center items-center bg-green-200 outline-2 outline-green-400 rounded-xl">
+                            <div className="flex flex-col justify-center items-center bg-neutral-200 outline-2 outline-neutral-400 rounded-xl">
                                 <button onClick={() => { setShowTemplateModal(true) }} className="transition-all flex items-center gap-2 bg-black p-3 px-6 rounded-xl cursor-pointer text-white hover:text-black hover:bg-white hover:outline-2 hover:outline-black h-14 z-50">
                                     <div className="flex gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">

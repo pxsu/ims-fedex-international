@@ -4,7 +4,7 @@ import { showNotification, Notification } from "../notifications/notifcations";
 export const loadPdf = async (input: string) => {
     const { pdfjs } = await import('react-pdf');
     pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-    const output = await pdfjs.getDocument({ data: input }).promise; 
+    const output = await pdfjs.getDocument({ data: input }).promise;
     return output
 };
 export const processInvoice = async (
