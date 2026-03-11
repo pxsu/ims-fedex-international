@@ -2,7 +2,6 @@
 
 // Drag n' Drop
 import { handleDragOver, handleDragLeave, handleDrop, clearUploadedFiles, setDownloadData, setDownloadDataAll } from "@/app/handlers/drag-n-drop/dragDrop";
-import DownloadModal from "./handlers/drag-n-drop/DownloadModal";
 import FilePreviewModal from "./handlers/drag-n-drop/FilePreviewModal";
 
 // Excel Handler
@@ -23,9 +22,6 @@ import InsertModal from "@/app/utilities/InsertModal";
 
 // Learning algorithm
 import { learnAlias } from "@/app/handlers/smart-query/query";
-
-// For the PDF library
-import 'canvas';
 
 export default function Page() {
 
@@ -158,7 +154,7 @@ export default function Page() {
                     />
                 )}
                 <NotificationComponent notifications={getNotifications} onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
-                {getShowTemplateModal && (<TemplateModal setShowTemplateModal={setShowTemplateModal} setTemplate={setTemplate} getTemplate={getTemplate} />)}
+                {getShowTemplateModal && (<TemplateModal setShowTemplateModal={setShowTemplateModal} setTemplate={setTemplate} getTemplate={getTemplate} setNotifications={setNotifications} />)}
                 {getShowVendorModal && (
                     <VendorModal setShowVendorModal={setShowVendorModal} setIsDraggingExcel={setIsDraggingExcel} setNotifications={setNotifications} setProcessedFileData={setProcessedFileData} setExcelModal={setExcelModal} getIsDraggingExcel={getIsDraggingExcel} />
                 )}
@@ -254,6 +250,9 @@ export default function Page() {
                         <div className="w-4 h-full">
                             <button onClick={() => window.location.href = '/'} className="text-[24px] font-bold text-black hover:text-transparent hover:text-[28px] hover:[-webkit-text-stroke:1px_rgb(51.1_0.262_276.96)] transition-all cursor-pointer">ims</button>
                         </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => { null }} className="hidden bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-indigo-700 hover:outline-2 hover:outline-indigo-500 transition-all cursor-pointer">Get Uploaded</button>
+                        </div>
                     </nav>
                     <nav className="absolute select-none inset-x-0 top-1 flex justify-center items-start pointer-events-none pt-2">
                         <div className="flex flex-col">
@@ -297,7 +296,7 @@ export default function Page() {
                     onDragOver={(e) => handleDragOver(e, setIsDragging)}
                     onDragLeave={(e) => handleDragLeave(e, setIsDragging)}
                     onDrop={(e) => handleDrop(e, getUploadedFiles, setUploadedFiles, setNotifications, setIsDragging)}
-                    className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-gray-200'}`}>
+                    className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-neutral-200'}`}>
                     <div className="flex flex-col justify-between h-full w-full">
                         <div className="flex justify-center items-center gap-2 h-full">
                             <div className="px-6 py-3 rounded-lg flex items-center gap-2 flex flex-col">
@@ -333,17 +332,17 @@ export default function Page() {
                                         return (
                                             <div className={downloadClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
                                                 <div className="flex-1 flex items-center justify-center">
-                                                    <div className="flex flex-col text-black">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-green-400">
+                                                    <div className="flex flex-col">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-emerald-400">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                                                         </svg>
-                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, items, true) }} className="text-green-400 gap-1 hover:underline cursor-pointer">Download?</button>
+                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, items, true) }} className="text-emerald-500 hover:text-emerald-400 gap-1 hover:underline cursor-pointer transition-colors duration-150">download?</button>
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-col items-left w-full">
-                                                    <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.vendorData?.canonicalName}</span>
+                                                    <span className="text-emerald-900 truncate w-full text-[10px] sm:text-xs md:text-sm font-medium">{file.vendorData?.canonicalName}</span>
                                                     <div className="flex gap-1">
-                                                        <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                                        <span className="text-emerald-600/60 text-[10px] sm:text-xs md:text-sm">{size}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -371,17 +370,17 @@ export default function Page() {
                                         return (
                                             <div className={downloadClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
                                                 <div className="flex-1 flex items-center justify-center">
-                                                    <div className="flex flex-col text-black">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-green-400">
+                                                    <div className="flex flex-col">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-emerald-400">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                                                         </svg>
-                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, items, true) }} className="text-green-400 gap-1 hover:underline cursor-pointer">Download?</button>
+                                                        <button onClick={() => { setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, items, true) }} className="text-emerald-500 hover:text-emerald-400 gap-1 hover:underline cursor-pointer transition-colors duration-150">download?</button>
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-col items-left w-full">
-                                                    <span className="text-gray-700 truncate w-full text-[10px] sm:text-xs md:text-sm">{file.vendorData?.canonicalName}</span>
+                                                    <span className="text-emerald-900 truncate w-full text-[10px] sm:text-xs md:text-sm font-medium">{file.vendorData?.canonicalName}</span>
                                                     <div className="flex gap-1">
-                                                        <span className="text-gray-400 text-[10px] sm:text-xs md:text-sm">{size}</span>
+                                                        <span className="text-emerald-600/60 text-[10px] sm:text-xs md:text-sm">{size}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -468,7 +467,7 @@ export default function Page() {
                                         <span>Choose Template</span>
                                     </div>
                                 </button>
-                                <div>{getTemplate.some(t => t.selected) ? (getTemplate.find(t => t.selected)?.name.length > 10 ? `${getTemplate.find(t => t.selected)?.name.slice(0, 10).toLowerCase()}...` : getTemplate.find(t => t.selected)?.name.toLowerCase()) : 'select template'}</div>
+                                <div>{getTemplate[0] ? (getTemplate[0].name.length > 10 ? `${getTemplate[0].name.slice(0, 10).toLowerCase()}...` : getTemplate[0].name.toLowerCase()) : 'select template'}</div>
                             </div>
                         </div>
                         {getUploadedFiles.length > 0 ? (
@@ -478,6 +477,7 @@ export default function Page() {
                         )}
                     </div>
                 </section>
+                <section className="text-black w-full bg-neutral-900 h-6 flex justify-center items-center text-white text-sm">version 1.1</section>
             </main>
         </>
     )

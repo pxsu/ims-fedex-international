@@ -118,7 +118,6 @@ export const setDownloadData = async (
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
     setIsSelected: Dispatch<SetStateAction<number[]>>,
     getActiveIndex: number,
-    getIsSelected: number[],
     items: {
         position: string;
         id: string;
@@ -138,18 +137,18 @@ export const setDownloadData = async (
                 const doc = await PDFDocument.load(Uint8Array.from(atob(invoice), c => c.charCodeAt(0)));
                 downloadArray.push(doc);
             } catch (err) {
-                showNotification("Error", setNotifications, `setDownloadData says ${err}`, "error");
+                showNotification("Error", setNotifications, `1-setDownloadData says ${err}`, "error");
             }
         }
         if (item.parent === true && item.label === 'Cover Sheet') {
             try {
-                const coverSheet = await generateTemplateSheet(file, getTemplate, setNotifications, setUploadedFiles, getIsSelected);
+                const coverSheet = await generateTemplateSheet(file, getTemplate, setNotifications);
                 if (!coverSheet) continue;
                 const arrayBuffer = await coverSheet.finalDownload.file.arrayBuffer();
                 const doc = await PDFDocument.load(arrayBuffer);
                 downloadArray.push(doc);
             } catch (err) {
-                showNotification("Error", setNotifications, `setDownloadData says ${err}`, "error");
+                showNotification("Error", setNotifications, `2-setDownloadData says ${err}`, "error");
             }
         }
         if (!item.parent && item.label !== 'Invoice' && item.label !== 'Cover Sheet') {
@@ -159,7 +158,7 @@ export const setDownloadData = async (
                 const doc = await PDFDocument.load(Uint8Array.from(atob(file), c => c.charCodeAt(0)));
                 downloadArray.push(doc);
             } catch (err) {
-                showNotification("Error", setNotifications, `setDownloadData says ${err}`, "error");
+                showNotification("Error", setNotifications, `3-setDownloadData says ${err}`, "error");
             }
         }
     }
@@ -216,7 +215,7 @@ export const setDownloadDataAll = async (
     try {
         for (const file of files) {
             setUploadedFiles(prev => { const updated = [...prev]; updated[getActiveIndex] = { ...updated[getActiveIndex], state: 'skeleton' }; return updated; });
-            const resultArray = await setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, items, false);
+            const resultArray = await setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, items, false);
             if (!resultArray) continue;
             for (const result of resultArray) {
                 downloadArray.push(result);

@@ -16,7 +16,7 @@ export default function NotificationComponent({
 }: NotificationProps) {
     return (
         <main className="flex flex-col items-center space-y-2 w-full max-w-sm">
-            <div className="pointer-events-none fixed -inset-3 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[9999]">
+            <div className="pointer-events-none fixed -inset-3 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[2000]">
                 <div className="flex w-full flex-col items-center space-y-2">
                     {notifications.map(notification => (
                         <Transition

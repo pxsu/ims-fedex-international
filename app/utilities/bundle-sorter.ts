@@ -2,14 +2,10 @@ import { Dispatch, SetStateAction } from "react";
 import { showNotification, Notification } from "@/app/handlers/notifications/notifcations";
 import { convertFileToBase64 } from "./crossplatform";
 
-// ! ----------------------------------------
-
 // Constants
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export const MAX_FILES = 20;
 export const MAX_TOTAL_SIZE = 50 * 1024 * 1024;
-
-// ! ----------------------------------------
 
 export const validateBundleItems = (
     setItems: Dispatch<SetStateAction<{
@@ -22,7 +18,7 @@ export const validateBundleItems = (
     }[]>>
 ) => {
     setItems(prev => {
-        let updated = [...prev];
+        let updated = prev.filter(item => item.parent);
         const hasInvoice = updated.some(i => i.label === 'Invoice');
         const hasCoverSheet = updated.some(i => i.label === 'Cover Sheet');
         if (!hasInvoice) {

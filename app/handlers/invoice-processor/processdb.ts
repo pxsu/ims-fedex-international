@@ -1,15 +1,17 @@
 import { Dispatch, SetStateAction } from "react";
 import { showNotification, Notification } from "../notifications/notifcations";
-import 'canvas';
 
-const processInvoice = async (
-    base64: string
-) => {
+export const loadPdf = async (input: string) => {
     const { pdfjs } = await import('react-pdf');
     pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-
+    const output = await pdfjs.getDocument({ data: input }).promise; 
+    return output
+};
+export const processInvoice = async (
+    base64: string
+) => {
     const pdfData = atob(base64.split(',')[1]);
-    const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
+    const pdf = await loadPdf(pdfData);
     const pages: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);

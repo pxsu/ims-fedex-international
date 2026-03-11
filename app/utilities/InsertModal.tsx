@@ -4,8 +4,6 @@ import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { Notification } from '@/app/handlers/notifications/notifcations';
 import { validateBundleItems, addToBundle, saveBundle } from './bundle-sorter';
-
-import { getBundleStatus } from "./bundle-sorter";
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { removeItem } from "./bundle-sorter";
@@ -36,27 +34,28 @@ export default function InsertModal({
                     <span className="">{position}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                    <div className="items-center hover:text-red-600 cursor-pointer">
-                        <svg
-                            onClick={() => { removeItem(position, setNotifications, setItems, items) }}
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            strokeWidth={2}
-                            stroke="currentColor"
-                            className="size-6">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                        </svg>
-                    </div>
+                    {!parent ? (
+                        <div className="items-center hover:text-red-600 cursor-pointer">
+                            <svg onClick={() => { removeItem(position, setNotifications, setItems, items) }}
+                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                strokeWidth={2} stroke="currentColor" className="size-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </div>
+                    ) : (
+                        <div className="items-center hover:text-red-600 cursor-pointer">
+                            <div className='w-6 h-6'></div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
     }
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[1000]">
             <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
-                    <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">
+                    <div className="items-center hover:text-red-600 hover:outline-red-600 cursor-pointer">
                         <svg
                             onClick={() => setInsertModal(false)}
                             xmlns="http://www.w3.org/2000/svg"

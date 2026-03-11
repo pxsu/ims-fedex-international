@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction } from 'react';
 import { handleExcelOver, handleExcelLeave, handleExcelDrop } from "@/app/handlers/excel-handler/processxlsx";
-import { showNotification, Notification } from "@/app/handlers/notifications/notifcations";
+import { Notification } from "@/app/handlers/notifications/notifcations";
 
 interface VendorModalProp {
     setShowVendorModal: Dispatch<SetStateAction<boolean>>,
@@ -21,10 +21,10 @@ export default function VendorModal(
         getIsDraggingExcel
     }: VendorModalProp) {
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[1000]">
             <div className="bg-white p-2 rounded-xl w-144 h-96 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
-                    <div className="items-center hover:text-red-600 rounded-md hover:outline-2 hover:outline-red-600 cursor-pointer">
+                    <div className="items-center hover:text-red-600 rounded-md hover:outline-red-600 cursor-pointer">
                         <svg
                             onClick={() => { setShowVendorModal(false) }}
                             xmlns="http://www.w3.org/2000/svg"
@@ -36,8 +36,7 @@ export default function VendorModal(
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                         </svg>
                     </div>
-                    <div className="text-xs text-neutral-500">Excel files only</div>
-                    <button className="bg-black p-1 px-4 rounded-md text-white hover:bg-white hover:text-purple-500 hover:outline-2 hover:outline-purple-500 transition-all cursor-pointer" onClick={() => { showNotification("Error", setNotifications, "This button hasn't been programmed yet", "error"); }}>Add</button>
+                    <div className="w-full text-xs text-neutral-500 flex justify-center">Excel files only</div>
                 </div>
                 <section
                     onDragOver={(e) => (handleExcelOver(e, setIsDraggingExcel))}

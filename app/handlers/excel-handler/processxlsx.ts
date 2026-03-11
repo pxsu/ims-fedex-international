@@ -1,3 +1,4 @@
+import 'canvas'
 import { Dispatch, SetStateAction } from "react";
 import { convertFileToBase64 } from "@/app/utilities/crossplatform";
 import * as XLSX from 'xlsx';
@@ -182,7 +183,7 @@ export const navigateExcelPage = (
     }
 };
 export const handleTemplate = async (
-    getTemplate: Dispatch<SetStateAction<any[]>>,
+    getTemplate: any[],
     setTemplate: Dispatch<SetStateAction<any[]>>,
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
 ) => {
@@ -260,8 +261,6 @@ export const generateTemplateSheet = async (
     file: any,
     template: any,
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
-    setUploadedFiles: Dispatch<SetStateAction<any[]>>,
-    getIsSelected: number[],
 ) => {
     const base64Data = template[0].data.replace(/^data:application\/pdf;base64,/, '');
     const templateData = await base64Data;
@@ -285,6 +284,10 @@ export const generateTemplateSheet = async (
     const currency = vendorData.currency.values;
     const pdfDoc = await PDFDocument.load(templateData);
     const form = pdfDoc.getForm()
+    form.getFields().forEach((field) => {
+        const name = field.getName();
+        console.log(name);
+    });
     const dateNow = `${new Date().getDate()}-${new Date()
         .toLocaleDateString("en-US", { month: "short" })
         .toUpperCase()}`
@@ -301,7 +304,6 @@ export const generateTemplateSheet = async (
         FIELD_taxValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate)).toFixed(2),
         FIELD_totalValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate) + parseFloat(processedData["subtotal"].replace(/,/g, ''))).toFixed(2),
         FIELD_approvalDate: dateNow,
-        // ! FIELD_poValue: processedData["po_number"] needs human intervention + accuracy updates
     }
     form.getFields().forEach((field) => {
         const name = field.getName();
@@ -313,7 +315,6 @@ export const generateTemplateSheet = async (
                     form.getDropdown(name).select(String(dataMap[name] ?? ''));
                 } catch (err) {
                     showNotification('System', setNotifications, `Could not set field ${name}:`, 'error')
-                    console.warn(`Could not set field ${name}:`, err);
                 }
             }
         }

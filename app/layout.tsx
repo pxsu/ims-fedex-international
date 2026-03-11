@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IMS by Pav",
+  title: "ims",
   description: "Invoice management system, built specifically for FedEx international.",
 };
 
@@ -24,11 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className='bg-neutral-100'>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
     </html>
   );
 }
