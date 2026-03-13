@@ -146,9 +146,7 @@ export const setDownloadData = async (
                 const invoice = file.unProcessedData.split(',')[1];
                 const doc = await PDFDocument.load(Uint8Array.from(atob(invoice), c => c.charCodeAt(0)));
                 downloadArray.push(doc);
-            } catch (err) {
-                showNotification("Error", setNotifications, `1-setDownloadData says ${err}`, "error");
-            }
+            } catch (err) { console.log('1-Cover Sheet item not found.') }
         }
         if (item.parent === true && item.label === 'Cover Sheet') {
             try {
@@ -157,9 +155,7 @@ export const setDownloadData = async (
                 const arrayBuffer = await coverSheet.finalDownload.file.arrayBuffer();
                 const doc = await PDFDocument.load(arrayBuffer);
                 downloadArray.push(doc);
-            } catch (err) {
-                showNotification("Error", setNotifications, `2-setDownloadData says ${err}`, "error");
-            }
+            } catch (err) { console.log('2-Cover Sheet item not found.') }
         }
         if (!item.parent && item.label !== 'Invoice' && item.label !== 'Cover Sheet') {
             try {
@@ -168,7 +164,7 @@ export const setDownloadData = async (
                 const doc = await PDFDocument.load(Uint8Array.from(atob(file), c => c.charCodeAt(0)));
                 downloadArray.push(doc);
             } catch (err) {
-                showNotification("Error", setNotifications, `3-setDownloadData says ${err}`, "error");
+                console.log('3-Cover Sheet item not found.')
             }
         }
     }

@@ -7,7 +7,11 @@ import { updateBrowserStorage } from "./handlers/server/server";
 
 // Excel Handler
 import ExcelModal from "./handlers/excel-handler/ExcelModal";
-import TemplateModal from "./handlers/excel-handler/TemplateModal";
+import dynamic from 'next/dynamic';
+const TemplateModal = dynamic(
+    () => import('./handlers/excel-handler/TemplateModal'),
+    { ssr: false }
+);
 import VendorModal from "./handlers/drag-n-drop/VendorModal";
 
 // Notifications
@@ -168,7 +172,7 @@ export default function Page() {
                     />
                 )}
                 {getMultiFileModal && (
-                    <MultipleFileModal  
+                    <MultipleFileModal
                         setMultiFileState={setMultiFileModal}
                     />
                 )}

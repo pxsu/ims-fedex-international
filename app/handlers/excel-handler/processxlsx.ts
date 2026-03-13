@@ -266,18 +266,17 @@ export const generateTemplateSheet = async (
     let processedData: any;
     let vendorData: any;
     if (!templateData) {
-        showNotification('System', setNotifications, 'No template selected', 'error');
         return;
     }
     try {
         processedData = file.processedData;
     } catch (err) {
-        showNotification('System', setNotifications, `generateTemplateSheet says: ${err}`, 'error');
+        showNotification('System', setNotifications, `No processed data found`, 'error');
     }
     try {
         vendorData = file.vendorData
     } catch (err) {
-        showNotification("System", setNotifications, `generateTemplateSheet says: ${err}`, "error")
+        showNotification('System', setNotifications, `No vendor found`, 'error');
     }
     const gLData = vendorData.relevant_gls.values;
     const currency = vendorData.currency.values;
