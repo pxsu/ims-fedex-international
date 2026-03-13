@@ -1,9 +1,42 @@
 import { Dispatch, SetStateAction } from "react";
 import { getDoc, setDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase"
-
 import { showNotification, Notification } from "@/app/handlers/notifications/notifcations"
 
+export const updateBrowserStorage = async (
+    setUploadedFiles: Dispatch<SetStateAction<any[]>>,
+    setItems: Dispatch<SetStateAction<{
+        position: string;
+        id: string;
+        label: string;
+        parent: boolean;
+        size: number;
+        content: string | null;
+    }[]>>
+) => {
+    const savedFiles = sessionStorage.getItem('uploadedFiles');
+    const savedBundle = sessionStorage.getItem('savedBundle');
+    if (savedFiles) {
+        const parsed = JSON.parse(savedFiles);
+        const restored = parsed.map((file: any) => {
+            if (file?.finalDownload?.fileBlob && typeof file.finalDownload.fileBlob === 'string') {
+                const base64Data = file.finalDownload.fileBlob.replace(/^data:application\/pdf;base64,/, '');
+                const byteArray = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                const blob = new Blob([byteArray], { type: 'application/pdf' });
+                return {
+                    ...file,
+                    finalDownload: {
+                        ...file.finalDownload,
+                        fileBlob: blob
+                    }
+                };
+            }
+            return file;
+        });
+        setUploadedFiles(restored);
+    }
+    if (savedBundle) { setItems(JSON.parse(savedBundle)); }
+}
 export const submitToFirebase = async (
     data: any,
     companyId: string,

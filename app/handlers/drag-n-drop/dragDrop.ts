@@ -27,10 +27,11 @@ export const handleDrop = async (
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     setIsDragging: Dispatch<SetStateAction<boolean>>,
+    setMultiFileModal: Dispatch<SetStateAction<boolean>>
 ) => {
     const files = e.dataTransfer.files;
     setIsDragging(false);
-    if (files && files.length > 0) {
+    if (files && files.length === 1) {
         const MAX_SIZE_MB = 10;
         const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
         try {
@@ -51,9 +52,19 @@ export const handleDrop = async (
                 }
             }
         } catch (err) {
-            showNotification("Error", setNotifications, "Something went wrong uploading your files", "error");
+            showNotification("Error", setNotifications, "Could not read file", "error");
         }
+    } else if (files && files.length > 1) {
+        checkUpload(files, setMultiFileModal);
+    } else {
+        showNotification("Error", setNotifications, "Could not read file", "error");
     }
+}
+export const checkUpload = async (
+    files: any,
+    setMultiFileModal: Dispatch<SetStateAction<boolean>>,
+) => {
+    setMultiFileModal(true);
 }
 export const handleFiles = async (
     file: File,
@@ -173,13 +184,11 @@ export const setDownloadData = async (
         const blob = new Blob([Uint8Array.from(atob(base64), c => c.charCodeAt(0))], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         setTimeout(() => { setUploadedFiles(prev => { const updated = [...prev]; updated[getActiveIndex] = { ...updated[getActiveIndex], state: 'file_object' }; return updated; }); setIsSelected([]); }, 2000);
-
         if (trigger) {
             triggerDownload(url, downloadName);
         } else {
             return downloadArray as PDFDocument[];;
         }
-
     } catch (err) {
         showNotification("Error", setNotifications, `${err}`, "error");
     }
@@ -241,3 +250,19 @@ export const triggerDownload = (url: string, downloadName: string) => {
     a.click();
     URL.revokeObjectURL(url);
 };
+export const removeFile = async (
+    setUploadedFiles: Dispatch<SetStateAction<any[]>>,
+    setNotifications: Dispatch<SetStateAction<Notification[]>>,
+    index: number,
+) => {
+    try {
+        setUploadedFiles((prevFiles) => {
+            const updatedFiles = prevFiles.filter((_, i) => i !== index);
+            sessionStorage.setItem('uploadedFiles', JSON.stringify(updatedFiles));
+            return updatedFiles;
+        });
+        // showNotification('System', setNotifications, 'Removed file', 'success');
+    } catch (err) {
+        return
+    }
+}

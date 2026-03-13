@@ -11,9 +11,6 @@ const nextConfig: NextConfig = {
       },
     ]
   },
-  experimental: {
-    serverComponentsExternalPackages: ['canvas', 'pdfjs-dist'],
-  },
 };
 
 export default nextConfig;

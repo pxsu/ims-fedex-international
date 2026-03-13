@@ -283,10 +283,6 @@ export const generateTemplateSheet = async (
     const currency = vendorData.currency.values;
     const pdfDoc = await PDFDocument.load(templateData);
     const form = pdfDoc.getForm()
-    form.getFields().forEach((field) => {
-        const name = field.getName();
-        console.log(name);
-    });
     const dateNow = `${new Date().getDate()}-${new Date()
         .toLocaleDateString("en-US", { month: "short" })
         .toUpperCase()}`

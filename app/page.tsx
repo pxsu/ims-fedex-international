@@ -1,8 +1,9 @@
 'use client';
 
 // Drag n' Drop
-import { handleDragOver, handleDragLeave, handleDrop, clearUploadedFiles, setDownloadData, setDownloadDataAll } from "@/app/handlers/drag-n-drop/dragDrop";
+import { handleDragOver, handleDragLeave, handleDrop, clearUploadedFiles, setDownloadData, setDownloadDataAll, removeFile } from "@/app/handlers/drag-n-drop/dragDrop";
 import FilePreviewModal from "./handlers/drag-n-drop/FilePreviewModal";
+import { updateBrowserStorage } from "./handlers/server/server";
 
 // Excel Handler
 import ExcelModal from "./handlers/excel-handler/ExcelModal";
@@ -23,6 +24,10 @@ import InsertModal from "@/app/utilities/InsertModal";
 // Learning algorithm
 import { learnAlias } from "@/app/handlers/smart-query/query";
 
+// Utilities 
+import multipleFileModal from '@/app/utilities/multipleFileModal';
+import MultipleFileModal from "@/app/utilities/multipleFileModal";
+
 export default function Page() {
 
     // global notification system
@@ -33,6 +38,7 @@ export default function Page() {
     const [getIsDraggingExcel, setIsDraggingExcel] = useState(false);
     const [getUploadedFiles, setUploadedFiles] = useState<any[]>([]);
     const [getResolveModal, setResolveModal] = useState<boolean>(false);
+    const [getMultiFileModal, setMultiFileModal] = useState<boolean>(false);
 
     // Template states
     const [getTemplate, setTemplate] = useState<any[]>([]);
@@ -82,28 +88,7 @@ export default function Page() {
 
     // Save memory after browser refresh
     useEffect(() => {
-        const savedFiles = sessionStorage.getItem('uploadedFiles');
-        const savedBundle = sessionStorage.getItem('savedBundle');
-        if (savedFiles) {
-            const parsed = JSON.parse(savedFiles);
-            const restored = parsed.map((file: any) => {
-                if (file?.finalDownload?.fileBlob && typeof file.finalDownload.fileBlob === 'string') {
-                    const base64Data = file.finalDownload.fileBlob.replace(/^data:application\/pdf;base64,/, '');
-                    const byteArray = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-                    const blob = new Blob([byteArray], { type: 'application/pdf' });
-                    return {
-                        ...file,
-                        finalDownload: {
-                            ...file.finalDownload,
-                            fileBlob: blob
-                        }
-                    };
-                }
-                return file;
-            });
-            setUploadedFiles(restored);
-        }
-        if (savedBundle) { setItems(JSON.parse(savedBundle)); }
+        updateBrowserStorage(setUploadedFiles, setItems);
     }, []);
 
     // Save template to browser storage
@@ -180,6 +165,11 @@ export default function Page() {
                         setNotifications={setNotifications}
                         items={items}
                         setItems={setItems}
+                    />
+                )}
+                {getMultiFileModal && (
+                    <MultipleFileModal  
+                        setMultiFileState={setMultiFileModal}
                     />
                 )}
                 {getResolveModal && getResolveState === 'idle' ? (
@@ -297,7 +287,7 @@ export default function Page() {
                 <section
                     onDragOver={(e) => handleDragOver(e, setIsDragging)}
                     onDragLeave={(e) => handleDragLeave(e, setIsDragging)}
-                    onDrop={(e) => handleDrop(e, getUploadedFiles, setUploadedFiles, setNotifications, setIsDragging)}
+                    onDrop={(e) => handleDrop(e, getUploadedFiles, setUploadedFiles, setNotifications, setIsDragging, setMultiFileModal)}
                     className={`flex justify-center items-center h-3/4 transition-all border-y-2 border-gray-100 text-neutral-300 ${isDragging ? 'border-purple-500 bg-purple-50 text-indigo-400' : 'bg-neutral-200'}`}>
                     <div className="flex flex-col justify-between h-full w-full">
                         <div className="flex justify-center items-center gap-2 h-full">
@@ -317,12 +307,18 @@ export default function Page() {
                                     const bytes = file.size || 0;
                                     const size = bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
                                     const isSelected = getIsSelected.includes(index);
-                                    const baseClass = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-indigo-400 ${isSelected ? 'outline-2 outline-indigo-400' : ''}`;
-                                    const needAttention = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-amber-400 ${isSelected ? 'outline-2 outline-amber-400' : ''}`;
-                                    const downloadClass = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 h-52 shrink-0 overflow-hidden cursor-pointer hover:outline-2 hover:outline-green-400 ${isSelected ? 'outline-2 outline-green-400' : ''}`;
+                                    const baseClass = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 min-h-52 shrink-0 overflow-hidden ${isSelected ? 'outline-2 outline-indigo-400' : ''}`;
+                                    const needAttention = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 min-h-52 shrink-0 overflow-hidden ${isSelected ? 'outline-2 outline-amber-400' : ''}`;
+                                    const downloadClass = `bg-white flex flex-col justify-between items-center rounded-xl text-sm p-2 gap-3 w-40 min-h-52 shrink-0 overflow-hidden ${isSelected ? 'outline-2 outline-green-400' : ''}`;
+                                    const deleteBtn = `size-6 text-red-400 hover:text-white hover:bg-red-400 rounded-xl cursor-pointer`;
                                     if (file.state === "skeleton") {
                                         return (
                                             <div className={baseClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
+                                                <div className="flex w-full items-center justify-end">
+                                                    <svg onClick={() => { removeFile(setUploadedFiles, setNotifications, index); }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={`${deleteBtn}`}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                    </svg>
+                                                </div>
                                                 <div className="animate-spin rounded-full w-32 h-32 border-[3px] border-gray-200 border-t-indigo-400" />
                                                 <div className="flex flex-col items-left w-full gap-1">
                                                     <div className="text-gray-400 text-[10px] sm:text-xs md:text-sm animate-pulse w-full bg-neutral-200 h-5 rounded"></div>
@@ -333,6 +329,11 @@ export default function Page() {
                                     } else if (file.resolution?.status === 'AUTO_RESOLVED' && file.state === 'file_object') {
                                         return (
                                             <div className={downloadClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
+                                                <div className="flex w-full items-center justify-end">
+                                                    <svg onClick={() => { removeFile(setUploadedFiles, setNotifications, index); }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={`${deleteBtn}`}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                    </svg>
+                                                </div>
                                                 <div className="flex-1 flex items-center justify-center">
                                                     <div className="flex flex-col">
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-emerald-400">
@@ -352,6 +353,11 @@ export default function Page() {
                                     } else if (file.resolution?.status === 'NEEDS_RESOLUTION' && file.state === 'file_object') {
                                         return (
                                             <div className={needAttention} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
+                                                <div className="flex w-full items-center justify-end">
+                                                    <svg onClick={() => { removeFile(setUploadedFiles, setNotifications, index); }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={`${deleteBtn}`}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                    </svg>
+                                                </div>
                                                 <div className="flex-1 flex items-center justify-center">
                                                     <div className="flex flex-col text-black">
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-amber-400">
@@ -371,6 +377,11 @@ export default function Page() {
                                     } else if (file.resolution?.status === 'MANUAL_RESOLVED' && file.state === 'file_object') {
                                         return (
                                             <div className={downloadClass} key={index} onClick={() => { setIsSelected(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]); setActiveIndex(index); }}>
+                                                <div className="flex w-full items-center justify-end">
+                                                    <svg onClick={() => { removeFile(setUploadedFiles, setNotifications, index); }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={`${deleteBtn}`}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                                    </svg>
+                                                </div>
                                                 <div className="flex-1 flex items-center justify-center">
                                                     <div className="flex flex-col">
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 text-emerald-400">
@@ -394,14 +405,14 @@ export default function Page() {
                     </div>
                 </section>
                 <section data-section="Queue array" className="p-8 flex-1">
-                    <div className="flex-1 flex items-center justify-center -translate-y-6 text-black gap-2">
+                    <div className="flex-1 flex items-center justify-center -translate-y-6 text-black gap-2 select-none">
                         <span>{`${getUploadedFiles.length} files added`}</span>
                         <span>|</span>
                         <button
                             onClick={() => { clearUploadedFiles(setUploadedFiles, setProcessedFileData, setIsSelected, setActiveIndex) }}
                             className="text-black cursor-pointer">
                             <div className="flex items-center hover:text-red-400">
-                                <span>clear</span>
+                                <span>clear all</span>
                             </div>
                         </button>
                     </div>
@@ -479,7 +490,7 @@ export default function Page() {
                         )}
                     </div>
                 </section>
-                <section className="text-black w-full bg-neutral-900 h-6 flex justify-center items-center text-white text-sm">version 1.1</section>
+                <section className="text-black w-full bg-neutral-900 h-6 flex justify-center items-center text-white text-sm">version 1.2</section>
             </main>
         </>
     )
