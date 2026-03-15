@@ -561,8 +561,7 @@ export default function Page() {
                     </div>
                 </section>
                 <section className="text-black w-full bg-neutral-900 h-6 flex justify-center items-center text-white text-sm gap-1">
-                    <span></span>
-                    <button onClick={() => { console.log(JSON.stringify(getVendorList.map(id => console.log(id)), null, 2)) }} className="text-indigo-300 cursor-pointer">version 2</button>
+                    <span>version 2</span>
                 </section>
             </main>
         </>
