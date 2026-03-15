@@ -12,19 +12,19 @@ export const getNotificationStyles = (
 ) => {
     switch (type) {
         case 'success':
-            return 'bg-green-400 border-2 border-black';
+            return 'bg-green-400';
         case 'error':
-            return 'bg-red-400 border-2 border-black';
+            return 'bg-red-400';
         case 'warning':
-            return 'bg-orange-300 border-2 border-black ';
+            return 'bg-orange-300';
         case 'info':
-            return 'bg-black/40 border-2 border-black';
+            return 'bg-black/40';
         default:
-            return 'bg-black/40 border-2 border-black';
+            return 'bg-black/40';
     }
 };
 export const showNotification = (
-    title: string,
+    title: string = 'System',
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     message?: string,
     type: NotificationType = 'success'
@@ -35,3 +35,10 @@ export const showNotification = (
         setNotifications(prev => prev.filter(n => n.id !== id));
     }, 3000);
 };
+
+/**
+ * 
+ * setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 3000);
+ */

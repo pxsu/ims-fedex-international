@@ -291,14 +291,28 @@ export const generateTemplateSheet = async (
         FIELD_invoiceDate: processedData["invoice_date"],
         FIELD_invoiceNumber: processedData["invoice_number"],
         FIELD_costCentre: vendorData?.costCentre?.values,
+        FIELD_poValue: processedData["po_number"],
         FIELD_province: vendorData?.taxValue?.province,
-        FIELD_subtotal: processedData["subtotal"],
+        FIELD_subtotal: processedData["subtotal1"],
+        FIELD_subtotal2: processedData["subtotal2"], // Sometimees exists, sometimes doesn't.
         FIELD_primaryTax: vendorData?.taxValue?.gstType,
         FIELD_secondaryTax: vendorData?.taxValue?.pstType,
-        FIELD_taxValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate)).toFixed(2),
-        FIELD_totalValue: (parseFloat(processedData["subtotal"].replace(/,/g, '')) * parseFloat(vendorData?.taxValue?.totalRate) + parseFloat(processedData["subtotal"].replace(/,/g, ''))).toFixed(2),
+        FIELD_taxValue: (
+            (parseFloat((processedData["subtotal1"] ?? "0").replace(/,/g, '')) +
+                parseFloat((processedData["subtotal2"] ?? "0").replace(/,/g, ''))) *
+            parseFloat(vendorData?.taxValue?.totalRate)
+        ).toFixed(2),
+        FIELD_totalValue: (
+            (parseFloat((processedData["subtotal1"] ?? "0").replace(/,/g, '')) +
+                parseFloat((processedData["subtotal2"] ?? "0").replace(/,/g, ''))) *
+            parseFloat(vendorData?.taxValue?.totalRate) +
+            (parseFloat((processedData["subtotal1"] ?? "0").replace(/,/g, '')) +
+                parseFloat((processedData["subtotal2"] ?? "0").replace(/,/g, '')))
+        ).toFixed(2),
         FIELD_approvalDate: dateNow,
     }
+    console.log("FIELD_taxValue:", dataMap.FIELD_taxValue);
+    console.log("FIELD_totalValue:", dataMap.FIELD_totalValue);
     form.getFields().forEach((field) => {
         const name = field.getName();
         if (dataMap[name]) {
@@ -324,7 +338,11 @@ export const generateTemplateSheet = async (
         form.getTextField(`GL_A${row}:A${row}`).setText(description.value ?? '');
         form.getTextField(`GL_A${row}:B${row}`).setText(gl_account.value ?? '');
         form.getTextField(`GL_A${row}:C${row}`).setText(cost_centre.value ?? '');
-        form.getTextField(`GL_A${row}:D${row}`).setText(processedData["subtotal"] ?? '');
+
+        const subtotalValue = gLData.length === 2
+            ? (index === 0 ? processedData["subtotal1"] : processedData["subtotal2"]) ?? ''
+            : processedData["subtotal1"] ?? '';
+        form.getTextField(`GL_A${row}:D${row}`).setText(subtotalValue);
     });
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });

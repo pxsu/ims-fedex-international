@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 import { Dispatch, SetStateAction } from "react";
-import { renderSkeleton } from "@/app/handlers/drag-n-drop/skeletons";
+import { renderSkeleton, removeSkeleton } from "@/app/handlers/drag-n-drop/skeletons";
 import { showNotification, Notification } from "@/app/handlers/notifications/notifcations";
 import { convertFileToBase64 } from "@/app/utilities/crossplatform";
 import { processDbRequests } from "../invoice-processor/processdb";
@@ -27,7 +27,10 @@ export const handleDrop = async (
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
     setNotifications: Dispatch<SetStateAction<Notification[]>>,
     setIsDragging: Dispatch<SetStateAction<boolean>>,
-    setMultiFileModal: Dispatch<SetStateAction<boolean>>
+    setMultiFileModal: Dispatch<SetStateAction<boolean>>,
+    setMultiFile: Dispatch<SetStateAction<any>>,
+    setMultiFileUint8: Dispatch<SetStateAction<Uint8Array[] | null>>,
+    getMultiFileModal: boolean,
 ) => {
     const files = e.dataTransfer.files;
     setIsDragging(false);
@@ -42,29 +45,133 @@ export const handleDrop = async (
                 showNotification("Error", setNotifications, message, "error");
             } else {
                 for (const file of Array.from(files)) {
-                    const index = await renderSkeleton(file, getUploadedFiles, setUploadedFiles);
-                    try {
-                        const fileData = await handleFiles(file, index, setUploadedFiles, setNotifications);
-                        await vendorMatch(index, fileData, setNotifications, setUploadedFiles);
-                    } catch (err) {
-                        showNotification("Error", setNotifications, `Could not render ${files.length} file${files.length > 1 ? 's' : ''}`, "info");
+                    // CHECK IF PDF
+                    const isMultiPage = await checkUpload(file, setMultiFileModal, setMultiFile, setMultiFileUint8, getMultiFileModal);
+                    if (!isMultiPage) {
+                        updateClient(file, getUploadedFiles, setUploadedFiles, setNotifications);
                     }
                 }
             }
         } catch (err) {
-            showNotification("Error", setNotifications, "Could not read file", "error");
+            showNotification("Error", setNotifications, "Could not rsead file", "error");
         }
-    } else if (files && files.length > 1) {
-        checkUpload(files, setMultiFileModal);
-    } else {
-        showNotification("Error", setNotifications, "Could not read file", "error");
     }
 }
 export const checkUpload = async (
-    files: any,
+    file: any,
     setMultiFileModal: Dispatch<SetStateAction<boolean>>,
+    setMultiFile: Dispatch<SetStateAction<any>>,
+    setMultiFileUint8: Dispatch<SetStateAction<Uint8Array[] | null>>,
+    getMultiFileModal: boolean
 ) => {
-    setMultiFileModal(true);
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await PDFDocument.load(arrayBuffer);
+        const pageCount = pdf.getPageCount();
+        // CHECK PAGE COUNT
+        if (pageCount > 1) {
+            const pages: PDFDocument[] = [];
+            const pageUint8Array: Uint8Array[] = [];
+            for (let i = 0; i < pageCount; i++) {
+                // Core document
+                const singlePage = await PDFDocument.create();
+                // Add onto core document
+                const [copiedPage] = await singlePage.copyPages(pdf, [i]);
+                singlePage.addPage(copiedPage);
+                pages.push(singlePage);
+                // Add onto Uint8Array array
+                const singlePageBytes = await singlePage.save();
+                const singlePageUint8 = new Uint8Array(singlePageBytes.buffer.slice(0));
+                pageUint8Array.push(singlePageUint8);
+            }
+            setMultiFile(pages);
+            setMultiFileUint8(pageUint8Array);
+            setMultiFileModal(true);
+            return true;
+        } else {
+            return false;
+        }
+    } catch (err) {
+        console.log(`checkUpload(): ${err}`);
+    }
+}
+export const clearDrop = async (
+    setMultiFileModal: Dispatch<SetStateAction<boolean>>,
+    setMultiFile: Dispatch<SetStateAction<any[] | null>>,
+    setMultiFileUint8: Dispatch<SetStateAction<Uint8Array[] | null>>,
+    setIsFileSelected: Dispatch<SetStateAction<number[]>>,
+    setSelectedFile: Dispatch<SetStateAction<number>>,
+) => {
+    setMultiFile([]);
+    setMultiFileUint8([]);
+    setIsFileSelected([]);
+    setSelectedFile(0);
+    setMultiFileModal(false);
+}
+export const processSelection = async (
+    selectedFiles: string[],
+    getIsFileSelected: number[],
+    setPageUrls: Dispatch<SetStateAction<string[]>>,
+    setIsFileSelected: Dispatch<SetStateAction<number[]>>,
+    getUploadedFiles: any[],
+    setUploadedFiles: Dispatch<SetStateAction<any[]>>,
+    setNotifications: Dispatch<SetStateAction<Notification[]>>,
+    getMultiFileUint8: Uint8Array[],
+    setMultiFileModal: Dispatch<SetStateAction<boolean>>,
+): Promise<File> => {
+
+    // ! FILTER
+    const sendDown = selectedFiles.filter((_, i) => getIsFileSelected.includes(i)); // * Sends selected files from pool
+    const filtered = selectedFiles.filter((_, i) => !getIsFileSelected.includes(i)); // * Updates removes selected files from pool
+    if (filtered.length === 0) {
+        setPageUrls([]);
+        setMultiFileModal(false);
+        setIsFileSelected([]);
+    } else {
+        setPageUrls(filtered ?? []);
+    };
+
+    // ! PROCESSOR
+    // ! ERROR - PRODUCES DUPLICATE
+    const mergedPdf = await PDFDocument.create();
+    const addedPages = new Set<string>();
+
+    for (const str of sendDown) {
+        if (addedPages.has(str)) continue;
+        addedPages.add(str);
+        const response = await fetch(str);
+        const arrayBuffer = await response.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        const pdf = await PDFDocument.load(uint8);
+        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach(page => mergedPdf.addPage(page));
+    }
+
+    sendDown.forEach(url => URL.revokeObjectURL(url));
+    const pdfBytes = await mergedPdf.save();
+    const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
+    const file = new File([blob], 'merged.pdf', { type: 'application/pdf' });
+
+    try {
+        updateClient(file, getUploadedFiles, setUploadedFiles, setNotifications);
+    } finally {
+        setIsFileSelected([]);
+    }
+    return file;
+}
+export const updateClient = async (
+    file: any,
+    getUploadedFiles: any[],
+    setUploadedFiles: Dispatch<SetStateAction<any[]>>,
+    setNotifications: Dispatch<SetStateAction<Notification[]>>,
+) => {
+    try {
+        const index = getUploadedFiles.length;
+        const fileData = await handleFiles(file, index, setUploadedFiles, setNotifications);
+        if (fileData) await vendorMatch(index, fileData, setNotifications, setUploadedFiles);
+    } catch (err) {
+        console.log(`Unable to process`, "error");
+    }
 }
 export const handleFiles = async (
     file: File,
@@ -72,6 +179,8 @@ export const handleFiles = async (
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
     setNotifications: Dispatch<SetStateAction<Notification[]>>
 ) => {
+    renderSkeleton(setUploadedFiles);
+    // ! PROCESS FILE
     const base64 = await convertFileToBase64(file);
     let processedData;
     try {
@@ -79,22 +188,29 @@ export const handleFiles = async (
     } catch (err) {
         console.log(err);
     }
-    const fileData = {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        lastModified: file.lastModified,
-        state: "skeleton",
-        unProcessedData: base64,
-        processedData: Object.fromEntries(processedData as Map<string, any>)
-    };
-    setUploadedFiles(prev => {
-        const updated = [...prev];
-        updated[index] = { ...updated[index], ...fileData };
-        sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
-        return updated;
-    });
-    return fileData;
+    // ! INVOICE CHECKING
+    if (!processedData || processedData.get("isInvoice") === false) {
+        showNotification("System", setNotifications, `File does not appear to be an invoice`, "info");
+        removeSkeleton(setUploadedFiles);
+        return null;
+    } else {
+        const fileData = {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified,
+            state: "skeleton",
+            unProcessedData: base64,
+            processedData: Object.fromEntries(processedData as Map<string, any>)
+        };
+        setUploadedFiles(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], ...fileData };
+            sessionStorage.setItem('uploadedFiles', JSON.stringify(updated));
+            return updated;
+        });
+        return fileData;
+    }
 }
 export const clearUploadedFiles = (
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
@@ -118,6 +234,7 @@ export const setDownloadData = async (
         unProcessedData: string,
         processedData: {
             invoice_number: string,
+            vendor_name: string
         },
         resolution: {
             vendorId: string,
@@ -128,6 +245,7 @@ export const setDownloadData = async (
     setUploadedFiles: Dispatch<SetStateAction<any[]>>,
     setIsSelected: Dispatch<SetStateAction<number[]>>,
     getActiveIndex: number,
+    setActiveIndex: Dispatch<SetStateAction<number>>,
     items: {
         position: string;
         id: string;
@@ -138,7 +256,14 @@ export const setDownloadData = async (
     }[],
     trigger: boolean,
 ) => {
-    setUploadedFiles(prev => { const updated = [...prev]; updated[getActiveIndex] = { ...updated[getActiveIndex], state: 'skeleton' }; return updated; });
+    setUploadedFiles(prev => {
+        const updated = prev.map(f =>
+            f.name === file.name
+                ? { ...f, state: 'skeleton' }
+                : f
+        );
+        return updated;
+    });
     let downloadArray: any[] = [];
     for (const item of items) {
         if (item.parent === true && item.label === 'Invoice') {
@@ -179,7 +304,16 @@ export const setDownloadData = async (
         const base64 = await merged.saveAsBase64();
         const blob = new Blob([Uint8Array.from(atob(base64), c => c.charCodeAt(0))], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        setTimeout(() => { setUploadedFiles(prev => { const updated = [...prev]; updated[getActiveIndex] = { ...updated[getActiveIndex], state: 'file_object' }; return updated; }); setIsSelected([]); }, 2000);
+        setTimeout(() => {
+            setUploadedFiles(prev => {
+                const updated = prev.map(f =>
+                    f.name === file.name
+                        ? { ...f, state: 'file_object' }
+                        : f
+                );
+                return updated;
+            }); setIsSelected([]);
+        }, 2000);
         if (trigger) {
             triggerDownload(url, downloadName);
         } else {
@@ -197,7 +331,7 @@ export const setDownloadDataAll = async (
         lastModified: number,
         state: string,
         unProcessedData: string,
-        processedData: { invoice_number: string },
+        processedData: { invoice_number: string, vendor_name: string },
         resolution: { vendorId: string }
     }[],
     getTemplate: any[],
@@ -206,6 +340,7 @@ export const setDownloadDataAll = async (
     setIsSelected: Dispatch<SetStateAction<number[]>>,
     getActiveIndex: number,
     getIsSelected: number[],
+    setActiveIndex: Dispatch<SetStateAction<number>>,
     items: {
         position: string;
         id: string;
@@ -219,7 +354,7 @@ export const setDownloadDataAll = async (
     try {
         for (const file of files) {
             setUploadedFiles(prev => { const updated = [...prev]; updated[getActiveIndex] = { ...updated[getActiveIndex], state: 'skeleton' }; return updated; });
-            const resultArray = await setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, items, false);
+            const resultArray = await setDownloadData(file, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, setActiveIndex, items, false);
             if (!resultArray) continue;
             for (const result of resultArray) {
                 downloadArray.push(result);

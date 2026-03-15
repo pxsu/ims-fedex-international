@@ -9,14 +9,14 @@ interface TemplateModalProps {
     setShowTemplateModal: Dispatch<SetStateAction<boolean>>,
     setTemplate: Dispatch<SetStateAction<any[]>>,
     getTemplate: any[],
-    setNotifications: Dispatch<SetStateAction<any[]>>
+    setNotifications: Dispatch<SetStateAction<any[]>>,
 }
 export default function TemplateModal(
     {
         setShowTemplateModal,
         setTemplate,
         getTemplate,
-        setNotifications
+        setNotifications,
     }: TemplateModalProps) {
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[1000]">
@@ -24,7 +24,7 @@ export default function TemplateModal(
                 <div className="flex mb-4">
                     <div className="flex justify-start items-center w-full">
                         <svg
-                            onClick={() => { setShowTemplateModal(false) }}
+                            onClick={() => { setShowTemplateModal(false); }}
                             xmlns="http://www.w3.org/2000/svg"
                             fill="none"
                             viewBox="0 0 24 24"
@@ -52,7 +52,7 @@ export default function TemplateModal(
                         {getTemplate.length > 0 && getTemplate.map((file, i) => (
                             <div key={i}>
                                 <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js" >
-                                    <Viewer fileUrl={file.data} defaultScale={0.8}/>
+                                    <Viewer fileUrl={file.data} defaultScale={0.8} />
                                 </Worker>
                             </div>
                         ))}

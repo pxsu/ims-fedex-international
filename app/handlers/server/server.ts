@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { getDoc, setDoc, doc } from "firebase/firestore";
+import { getDocs, getDoc, setDoc, doc, collection } from "firebase/firestore";
 import { db } from "@/firebase"
 import { showNotification, Notification } from "@/app/handlers/notifications/notifcations"
 
@@ -88,7 +88,6 @@ export const submitToFirebase = async (
         setProcessedFileData([]);
     }, 1500);
 };
-
 export const getUploadBtnResponse = (
     getSubmissionIndex: any[],
     uploadStatus: 'idle' | 'uploading' | 'success' | 'error' | 'exists'
@@ -120,3 +119,20 @@ export const getUploadBtnResponse = (
         text: statusConfig[uploadStatus].text
     };
 };
+export const buildSelection = async (
+    companyId: string,
+    setVendorList: Dispatch<SetStateAction<any[]>>,
+    setIsLoading: Dispatch<SetStateAction<boolean>>
+) => {
+    try {
+        setIsLoading(true);
+        const colRef = collection(db, companyId, 'query', 'vendor_data');
+        const snapshot = await getDocs(colRef);
+        const returnList = snapshot.docs.map(doc => doc.id);
+        setVendorList(returnList);
+    } catch (error) {
+        console.error(error);
+    } finally {
+        setIsLoading(false);
+    }
+}

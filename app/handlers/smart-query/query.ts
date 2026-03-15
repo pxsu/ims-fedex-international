@@ -58,7 +58,7 @@ export const resolutionLog = async (
             resolvedAt: new Date(),
         })
     } catch (error) {
-        showNotification('System', setNotifications, `logResolution error: ${error}`, 'error');
+        console.log(`logResolution error: ${error}`);
     }
 }
 export const promoteAlias = async (
@@ -83,10 +83,9 @@ export const promoteAlias = async (
                 aliases: arrayUnion(rawInput.toLowerCase().trim()),
                 updatedAt: new Date(),
             });
-            showNotification('System', setNotifications, `${rawInput} is now a known alias of ${parentId} after being seen ${seenCount} times now`, 'success');
         }
     } catch (error) {
-        showNotification('System', setNotifications, `promoteAlias says ${error}`, 'error');
+        console.log(`promoteAlias says ${error}`);
     }
 };
 export const learnAlias = async (
@@ -142,7 +141,6 @@ export const learnAlias = async (
                 aliases: arrayUnion(rawInput.toLowerCase().trim()),
                 updatedAt: new Date(),
             });
-            showNotification('System', setNotifications, `Added "${rawInput}" known aliases of ${parentId} after ${seenCount} resolutions`, 'success');
         }
         const vendorDoc = await getDoc(doc(db, companyId, 'query', 'vendor_data', parentId));
         const vendorData = vendorDoc.data();
@@ -165,9 +163,8 @@ export const learnAlias = async (
         setResolveState('idle');
         setResolveModal(false);
         setActiveIndex(0);
-        showNotification('System', setNotifications, `Manually resolved to ${parentId}`, 'success');
     } catch (error) {
-        showNotification('System', setNotifications, `learnAlias says: ${error}`, 'error');
+        console.log(`learnAlias says: ${error}`);
     }
 };
 export const smartQuery = async (inputQuery: string, companyId: string) => {
@@ -253,6 +250,6 @@ export const vendorMatch = async (
             });
         }
     } catch (error) {
-        showNotification("Error", setNotifications, `vendorMatch says: ${error}`, "error");
+        console.log(`vendorMatch says: ${error}`, "error");
     }
 }

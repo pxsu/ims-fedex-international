@@ -1,18 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function Error({ error }: { error: Error & { digest?: string }; }) {
-    const router = useRouter();
     const handleReset = () => {
         sessionStorage.clear();
-        router.push('/');
     };
     useEffect(() => {
         console.error(error);
     }, [error]);
-
     return (
         <>
             <div className="relative">
@@ -31,7 +27,7 @@ export default function Error({ error }: { error: Error & { digest?: string }; }
                         ims crashed
                     </h2>
                     <button
-                        onClick={() => null}
+                        onClick={() => { window.location.href = '/'; handleReset(); }}
                         className="mt-6 rounded-full outline-2 outline-neutral-900 hover:bg-neutral-200 px-5 py-2 text-sm font-medium text-neutral-900 transition-all active:scale-95 -translate-y-4 cursor-pointer">
                         Reset
                     </button>
