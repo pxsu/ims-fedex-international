@@ -545,8 +545,9 @@ export default function Page() {
                                 <span>Choose Template</span>
                             </button>
                         </div>
-                        {getUploadedFiles.length > 0 && getUploadedFiles[0].processedData ? (
-                            <button onClick={() => setDownloadDataAll(getUploadedFiles, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, setActiveIndex, items)} className="transition-all p-3 px-6 text-neutral-100 rounded-[50px] cursor-pointer bg-orange-400 hover:text-orange-600 hover:outline-orange-600 hover:bg-orange-300 hover:outline-2 h-14">
+                        {/** DISABLED BECAUSE FORM FIELDS MERGED TOGETHER CAUSE ISSUES
+                         * {getUploadedFiles.length > 0 && getUploadedFiles[0].processedData ? (
+                            <button disabled onClick={() => setDownloadDataAll(getUploadedFiles, getTemplate, setNotifications, setUploadedFiles, setIsSelected, getActiveIndex, getIsSelected, setActiveIndex, items)} className="transition-all p-3 px-6 text-neutral-100 rounded-[50px] cursor-pointer bg-orange-400 hover:text-orange-600 hover:outline-orange-600 hover:bg-orange-300 hover:outline-2 h-14">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="m9 12.75 3 3m0 0 3-3m-3 3v-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                                 </svg>
@@ -558,6 +559,7 @@ export default function Page() {
                                 </svg>
                             </button>
                         )}
+                         */}
                     </div>
                 </section>
                 <section className="text-black w-full bg-neutral-900 h-6 flex justify-center items-center text-white text-sm gap-1">
